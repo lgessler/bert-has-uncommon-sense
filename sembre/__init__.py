@@ -6,3 +6,10 @@
 # the same way in the .allennlp_plugins file.
 from my_project.model import *
 from my_project.dataset_reader import *
+
+# ensure we have semcor downloaded
+import nltk
+try:
+    nltk.data.find('corpora/semcor.zip')
+except LookupError:
+    nltk.download('semcor')

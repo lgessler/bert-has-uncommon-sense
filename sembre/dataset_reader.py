@@ -14,7 +14,7 @@ class ClassificationTsvReader(DatasetReader):
                  max_tokens: int = None,
                  **kwargs):
         super().__init__(**kwargs)
-        self.tokenizer = tokenizer or WhitespaceTokenizer()
+        self.tokenizer = tokenizer or Tokenizer()
         self.token_indexers = token_indexers or {'tokens': SingleIdTokenIndexer()}
         self.max_tokens = max_tokens
 
@@ -33,3 +33,12 @@ class ClassificationTsvReader(DatasetReader):
             for line in lines:
                 text, sentiment = line.strip().split('\t')
                 yield self.text_to_instance(text, sentiment)
+
+
+@DatasetReader.register('semcor')
+class SemcorReader(DatasetReader):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def _read(self, file_path: str) -> Iterable[Instance]:
+        yield None
