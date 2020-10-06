@@ -83,5 +83,4 @@ class SemcorReader(DatasetReader):
                 if j - i != 1:
                     logging.info('Skipping multiword instance ' + ' '.join(span_tokens))
                     continue
-                print(lemma, type(lemma))
                 yield self.text_to_instance(tokens, i, j, lemma_to_string(lemma))
