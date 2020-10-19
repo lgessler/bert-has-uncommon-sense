@@ -3,3 +3,6 @@ __pycache__
 *.pyc
 model/
 scratch.py
+dataset_cache/
+embeddings/
+.mypy_cache/
