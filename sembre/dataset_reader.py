@@ -55,7 +55,6 @@ class SemcorReader(DatasetReader):
         self.split = split
         self.token_indexers = token_indexers
         self.embedding_predictor = embedding_predictor
-        self.try_cache = try_cache
 
     def text_to_instance(self,
                          tokens: List[str],
