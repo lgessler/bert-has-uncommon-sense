@@ -1,3 +1,5 @@
+import os
+import pickle
 
 from sembre import SemcorReader, SemcorRetriever, SemcorPredictor
 from sembre.embedder_model import EmbedderModelPredictor, EmbedderModel, EmbedderDatasetReader
@@ -43,26 +45,40 @@ def predictor_for_train_reader(embedding_name, device):
     return predictor
 
 
-def read_datasets(embedding_name, train_filepath, test_filepath):
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+def read_dataset_cached(split, filepath, embedding_name, with_embeddings=False):
+    if with_embeddings:
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        embedding_predictor = predictor_for_train_reader(embedding_name, device)
+    else:
+        embedding_predictor = None
 
-    train_embedding_predictor = predictor_for_train_reader(embedding_name, device)
     indexer = indexer_for_embedder(embedding_name)
-
-    print("Loading data")
-    # note: filenames passed to read() are actually dummies (data is read from nltk's copy of semcor)
-    # but we need them there for caching to work
-    train_reader = SemcorReader(
-        split='train',
+    reader = SemcorReader(
+        split=split,
         token_indexers={'tokens': indexer},
-        embedding_predictor=train_embedding_predictor,
-        cache_directory=f'instance_cache/{embedding_name}'
+        embedding_predictor=embedding_predictor
     )
-    test_reader = SemcorReader(split='test', token_indexers={'tokens': indexer}, cache_directory='instance_cache')
-    print("Reading train")
-    train_dataset = train_reader.read(train_filepath + '__' + embedding_name)
-    print("Reading test")
-    test_dataset = test_reader.read(test_filepath + '__' + embedding_name)
+
+    pickle_name = filepath + '__' + embedding_name
+    pickle_path = 'dataset_cache/' + pickle_name + '.pkl'
+    if os.path.isfile(pickle_path):
+        print(f"Reading split {split} from cache")
+        with open(pickle_path, 'rb') as f:
+            return pickle.load(f)
+
+    print(f"Reading split {split} from nltk")
+    dataset = reader.read(pickle_name)
+    os.makedirs('dataset_cache', exist_ok=True)
+    with open(pickle_path, 'wb') as f:
+        print(f"Caching {split} in {pickle_path}")
+        pickle.dump(dataset, f)
+
+    return dataset
+
+
+def read_datasets(embedding_name, train_filepath, test_filepath):
+    train_dataset = read_dataset_cached('train', train_filepath, embedding_name, with_embeddings=True)
+    test_dataset = read_dataset_cached('test', test_filepath, embedding_name, with_embeddings=False)
     return train_dataset, test_dataset
 
 
