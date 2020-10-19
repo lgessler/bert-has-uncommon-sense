@@ -55,6 +55,7 @@ class SemcorReader(DatasetReader):
         self.split = split
         self.token_indexers = token_indexers
         self.embedding_predictor = embedding_predictor
+        self.try_cache = try_cache
 
     def text_to_instance(self,
                          tokens: List[str],
@@ -78,9 +79,10 @@ class SemcorReader(DatasetReader):
 
     def _read(self, file_path: str) -> Iterable[Instance]:
         sentences = sc.tagged_sents(tag='sem')
-        # TODO: this is a temporary measure for debugging
+        # TODO: be wary that this is here
         if 'small' in file_path:
-            sentences = list(islice(sentences, 5))
+            sentences = list(islice(sentences, 50))
+
         if self.split == 'train':
             sentences = sentences[:int(len(sentences)*.8)]
             logger.info("Reading train split of semcor: " + str(len(sentences)))
@@ -89,6 +91,8 @@ class SemcorReader(DatasetReader):
             logger.info("Reading test split of semcor: " + str(len(sentences)))
         elif self.split == 'all':
             logger.info("Reading all splits of semcor: " + str(len(sentences)))
+        elif self.split == 'none':
+            return []
         else:
             raise Exception("Unknown split: " + self.split)
 
