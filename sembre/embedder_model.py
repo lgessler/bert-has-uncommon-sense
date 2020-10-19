@@ -25,8 +25,7 @@ class EmbedderModel(Model):
             )
         else:
             embedded_text = self.embedder(
-                token_ids=text['tokens']['token_ids'],
-                mask=text['tokens']['mask']
+                tokens=text['tokens']['tokens']
             )
 
         return {
