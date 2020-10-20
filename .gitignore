@@ -6,3 +6,5 @@ scratch.py
 dataset_cache/
 embeddings/
 .mypy_cache/
+stats/
+predictions/
