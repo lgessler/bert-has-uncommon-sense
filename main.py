@@ -138,17 +138,24 @@ def main(embedding_name, train_filepath, test_filepath):
 
     # read train and test splits of semcor, precompute embeddings on train
     train_dataset, test_dataset = read_datasets(embedding_name, train_filepath, test_filepath)
-
     # record some stats on train's labels
     trlabc, trsymc, trlemc = stats(train_filepath, train_dataset, test_filepath, test_dataset)
 
     print("Constructing vocabulary")
-    vocab = Vocabulary.from_instances(train_dataset)
-    vocab.extend_from_instances(test_dataset)
+    indexer = indexer_for_embedder(embedding_name)
+    vocab, embedder = embedder_for_embedding(embedding_name)
+    # we're using a `transformers` model
+    if not embedding_name.startswith('embeddings/'):
+        vocab = Vocabulary.from_instances(train_dataset)
+        vocab.extend_from_instances(test_dataset)
+    else:
+        label_vocab = Vocabulary.from_instances(train_dataset)
+        label_vocab.extend_from_instances(test_dataset)
+        del label_vocab._token_to_index['tokens']
+        del label_vocab._index_to_token['tokens']
+        vocab.extend_from_vocab(label_vocab)
 
     print("Constructing model")
-    indexer = indexer_for_embedder(embedding_name)
-    _, embedder = embedder_for_embedding(embedding_name)
     model = SemcorRetriever(
         vocab=vocab,
         embedder=embedder,
