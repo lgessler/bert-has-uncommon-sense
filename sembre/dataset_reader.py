@@ -1,5 +1,6 @@
 from typing import Dict, Iterable, List, Literal
 from itertools import islice
+import random
 
 import numpy as np
 from sembre.embedder_model import EmbedderModelPredictor
@@ -11,7 +12,6 @@ from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer
 from allennlp.data.tokenizers import Token, Tokenizer, WhitespaceTokenizer
 from allennlp.common.util import logger
 from nltk.corpus.reader import Lemma
-
 
 
 def tokens_of_sentence(sentence) -> List[str]:
@@ -77,10 +77,13 @@ class SemcorReader(DatasetReader):
         return Instance(fields)
 
     def _read(self, file_path: str) -> Iterable[Instance]:
-        sentences = sc.tagged_sents(tag='sem')
+        sentences = list(sc.tagged_sents(tag='sem'))
         # TODO: be wary that this is here
         if 'small' in file_path:
             sentences = list(islice(sentences, 50))
+
+        # deterministically shuffle sentences
+        random.Random(42).shuffle(sentences)
 
         if self.split == 'train':
             sentences = sentences[:int(len(sentences)*.8)]
