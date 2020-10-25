@@ -9,6 +9,7 @@ import tqdm
 from sembre import SemcorReader, SemcorRetriever, SemcorPredictor, format_sentence
 from sembre.embedder_model import EmbedderModelPredictor, EmbedderModel, EmbedderDatasetReader
 import torch
+from transformers import BertTokenizer
 from allennlp.data import Vocabulary
 from allennlp.data.token_indexers import PretrainedTransformerMismatchedIndexer, SingleIdTokenIndexer
 from allennlp.modules.token_embedders import PretrainedTransformerMismatchedEmbedder, Embedding
@@ -26,7 +27,9 @@ def indexer_for_embedder(embedding_name):
 def embedder_for_embedding(embedding_name):
     vocab = Vocabulary()
     if embedding_name.startswith('bert-'):
-        # TODO: should really be using the embedding vocabulary, but i'm not sure how to get that here
+        tokenizer = BertTokenizer.from_pretrained(embedding_name)
+        for word in tokenizer.vocab.keys():
+            vocab.add_token_to_namespace(word, "tokens")
         token_embedders = {"tokens": PretrainedTransformerMismatchedEmbedder(model_name=embedding_name)}
     else:
         with open(embedding_name, 'r', encoding='utf-8') as f:
@@ -144,16 +147,19 @@ def main(embedding_name, train_filepath, test_filepath):
     print("Constructing vocabulary")
     indexer = indexer_for_embedder(embedding_name)
     vocab, embedder = embedder_for_embedding(embedding_name)
+
     # we're using a `transformers` model
-    if not embedding_name.startswith('embeddings/'):
-        vocab = Vocabulary.from_instances(train_dataset)
-        vocab.extend_from_instances(test_dataset)
-    else:
-        label_vocab = Vocabulary.from_instances(train_dataset)
-        label_vocab.extend_from_instances(test_dataset)
+    label_vocab = Vocabulary.from_instances(train_dataset)
+    label_vocab.extend_from_instances(test_dataset)
+    try:
         del label_vocab._token_to_index['tokens']
+    except KeyError:
+        pass
+    try:
         del label_vocab._index_to_token['tokens']
-        vocab.extend_from_vocab(label_vocab)
+    except KeyError:
+        pass
+    vocab.extend_from_vocab(label_vocab)
 
     print("Constructing model")
     model = SemcorRetriever(
@@ -169,12 +175,12 @@ def main(embedding_name, train_filepath, test_filepath):
     predictions_path = f'predictions/{embedding_name.replace("embeddings/", "")}.tsv'
     with open(predictions_path, 'wt') as f:
         tsv_writer = csv.writer(f, delimiter='\t')
-        header = ['sentence', 'label', 'synset', 'lemma']
-        header += [f"label_{i+1}" for i in range(5)]
-        header += [f"synset_{i+1}" for i in range(5)]
-        header += [f"lemma_{i+1}" for i in range(5)]
-        header += [f"sentence_{i+1}" for i in range(5)]
-        header += [f"cosine_sim_{i+1}" for i in range(5)]
+        header = ['sentence', 'label', 'synset', 'lemma', 'label_freq_in_train']
+        header += [f"label_{i+1}" for i in range(50)]
+        header += [f"synset_{i+1}" for i in range(50)]
+        header += [f"lemma_{i+1}" for i in range(50)]
+        header += [f"sentence_{i+1}" for i in range(50)]
+        header += [f"cosine_sim_{i+1}" for i in range(50)]
         tsv_writer.writerow(header)
 
         for instance in tqdm.tqdm([i for i in test_dataset if trlabc[i['lemma_label'].label] >= 5]):
@@ -185,12 +191,13 @@ def main(embedding_name, train_filepath, test_filepath):
             label = instance['lemma_label'].label
             synset = label[:label.rfind('_')]
             lemma = label[label.rfind('_')+1:]
-            row = [sentence, label, synset, lemma]
-            row += [i['label'] for i in d['top_5']]
-            row += [i['label'][:i['label'].rfind('_')] for i in d['top_5']]
-            row += [i['label'][i['label'].rfind('_')+1:] for i in d['top_5']]
-            row += [i['sentence'] for i in d['top_5']]
-            row += [i['cosine_sim'] for i in d['top_5']]
+            label_freq_in_train = trlabc[instance['lemma_label'].label]
+            row = [sentence, label, synset, lemma, label_freq_in_train]
+            row += [i['label'] for i in d['top_50']]
+            row += [i['label'][:i['label'].rfind('_')] for i in d['top_50']]
+            row += [i['label'][i['label'].rfind('_')+1:] for i in d['top_50']]
+            row += [i['sentence'] for i in d['top_50']]
+            row += [i['cosine_sim'] for i in d['top_50']]
             tsv_writer.writerow(row)
 
     print(f"Wrote predictions to {predictions_path}")
@@ -214,9 +221,10 @@ if __name__ == '__main__':
         help='when provided, will use a tiny slice of semcor (use for debugging)'
     )
     args = ap.parse_args()
+    print(args)
 
     main(
         args.embedding_name,
         'train' + ('_small' if args.small else ''),
-        'test' + ('_small' if args.small else '')
+        'test' + ('_small' if args.small else ''),
     )
