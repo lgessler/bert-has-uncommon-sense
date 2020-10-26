@@ -136,7 +136,7 @@ def stats(train_filepath, train_dataset, test_filepath, test_dataset):
     return train_labels, train_synsets, train_lemmas
 
 
-def main(embedding_name, train_filepath, test_filepath):
+def main(embedding_name, train_filepath, test_filepath, top_n=50):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # read train and test splits of semcor, precompute embeddings on train
@@ -166,7 +166,8 @@ def main(embedding_name, train_filepath, test_filepath):
         vocab=vocab,
         embedder=embedder,
         target_dataset=train_dataset,
-        device=device
+        device=device,
+        top_n=top_n,
     ).eval().to(device)
     dummy_reader = SemcorReader(split='train', token_indexers={'tokens': indexer})
     predictor = SemcorPredictor(model=model, dataset_reader=dummy_reader)
@@ -176,11 +177,11 @@ def main(embedding_name, train_filepath, test_filepath):
     with open(predictions_path, 'wt') as f:
         tsv_writer = csv.writer(f, delimiter='\t')
         header = ['sentence', 'label', 'synset', 'lemma', 'label_freq_in_train']
-        header += [f"label_{i+1}" for i in range(50)]
-        header += [f"synset_{i+1}" for i in range(50)]
-        header += [f"lemma_{i+1}" for i in range(50)]
-        header += [f"sentence_{i+1}" for i in range(50)]
-        header += [f"cosine_sim_{i+1}" for i in range(50)]
+        header += [f"label_{i+1}" for i in range(top_n)]
+        header += [f"synset_{i+1}" for i in range(top_n)]
+        header += [f"lemma_{i+1}" for i in range(top_n)]
+        header += [f"sentence_{i+1}" for i in range(top_n)]
+        header += [f"cosine_sim_{i+1}" for i in range(top_n)]
         tsv_writer.writerow(header)
 
         for instance in tqdm.tqdm([i for i in test_dataset if trlabc[i['lemma_label'].label] >= 5]):
@@ -193,11 +194,11 @@ def main(embedding_name, train_filepath, test_filepath):
             lemma = label[label.rfind('_')+1:]
             label_freq_in_train = trlabc[instance['lemma_label'].label]
             row = [sentence, label, synset, lemma, label_freq_in_train]
-            row += [i['label'] for i in d['top_50']]
-            row += [i['label'][:i['label'].rfind('_')] for i in d['top_50']]
-            row += [i['label'][i['label'].rfind('_')+1:] for i in d['top_50']]
-            row += [i['sentence'] for i in d['top_50']]
-            row += [i['cosine_sim'] for i in d['top_50']]
+            row += [i['label'] for i in d[f'top_{top_n}']]
+            row += [i['label'][:i['label'].rfind('_')] for i in d[f'top_{top_n}']]
+            row += [i['label'][i['label'].rfind('_')+1:] for i in d[f'top_{top_n}']]
+            row += [i['sentence'] for i in d[f'top_{top_n}']]
+            row += [i['cosine_sim'] for i in d[f'top_{top_n}']]
             tsv_writer.writerow(row)
 
     print(f"Wrote predictions to {predictions_path}")
@@ -209,6 +210,7 @@ if __name__ == '__main__':
         "embedding_name",
         help="The pretrained embeddings to use.",
         choices=[
+            'bert-large-cased',
             'bert-base-cased',
             'bert-base-uncased',
             'embeddings/glove.6B.300d.txt',
@@ -220,6 +222,11 @@ if __name__ == '__main__':
         action='store_true',
         help='when provided, will use a tiny slice of semcor (use for debugging)'
     )
+    ap.add_argument(
+        '--top-n',
+        type=int,
+        default=50
+    )
     args = ap.parse_args()
     print(args)
 
@@ -227,4 +234,5 @@ if __name__ == '__main__':
         args.embedding_name,
         'train' + ('_small' if args.small else ''),
         'test' + ('_small' if args.small else ''),
+        top_n=args.top_n
     )

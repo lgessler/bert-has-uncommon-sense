@@ -28,12 +28,13 @@ class SemcorRetriever(Model):
                  vocab: Vocabulary,
                  embedder: TextFieldEmbedder,
                  target_dataset: AllennlpDataset,
-                 device: Union[str, int]):
+                 device: Union[str, int],
+                 top_n: int):
         super().__init__(vocab)
         self.embedder = embedder
         self.accuracy = CategoricalAccuracy()
         self.target_dataset = target_dataset
-        # TODO: build a matrix for cosining against from this
+        self.top_n = top_n
 
         if not all(inst['span_embeddings'].array.shape[0] == 1 for inst in self.target_dataset):
             raise NotImplemented("All spans must be length 1")
@@ -64,19 +65,19 @@ class SemcorRetriever(Model):
         dist = cosine_similarity(self.target_dataset_embeddings, query_embedding)
         indices = torch.argsort(dist, descending=True)
 
-        # return top 5
-        result = {'top_5': []}
-        top_5 = indices[:5]
-        for i in top_5:
+        # return top n
+        result = {f'top_{self.top_n}': []}
+        top_n = indices[:self.top_n]
+        for i in top_n:
             instance = self.target_dataset[i]
             span = instance['lemma_span']
-            result['top_5'].append({
+            result[f'top_{self.top_n}'].append({
                 'sentence': format_sentence([t.text for t in instance['text'].tokens],
                                             span.span_start, span.span_end),
                 'label': str(instance['lemma_label'].label),
                 'cosine_sim': dist[i].item()
             })
-        result['top_5'] = [result['top_5']]
+        result[f'top_{self.top_n}'] = [result[f'top_{self.top_n}']]
         #pprint(result)
 
         return result
