@@ -1,10 +1,10 @@
 import random
 from pprint import pprint
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List, Union, Literal
 
 import torch
 from allennlp.modules.token_embedders import PretrainedTransformerMismatchedEmbedder
-from torch.nn.functional import cosine_similarity
+from torch.nn.functional import cosine_similarity, pairwise_distance
 from allennlp.data import Vocabulary, TokenIndexer, Instance, AllennlpDataset
 from allennlp.models import Model
 from allennlp.modules import TokenEmbedder, TextFieldEmbedder
@@ -22,19 +22,31 @@ def is_bert(embedder: TextFieldEmbedder):
     return isinstance(embedder._token_embedders['tokens'], PretrainedTransformerMismatchedEmbedder)
 
 
+def function_for_distance_metric(metric_name):
+    """Return a function that accepts 2 tensors and returns a pairwise distance"""
+    if metric_name == "cosine":
+        return lambda x1, x2: 1 - cosine_similarity(x1, x2)
+    elif metric_name == "euclidean":
+        return lambda x1, x2: pairwise_distance(x1, x2, p=2)
+    else:
+        raise Exception(f"Invalid distance metric: \"{metric_name}\"")
+
+
 @Model.register('semcor_retriever')
 class SemcorRetriever(Model):
     def __init__(self,
                  vocab: Vocabulary,
                  embedder: TextFieldEmbedder,
                  target_dataset: AllennlpDataset,
-                 device: Union[str, int],
+                 device: torch.device,
+                 distance_metric: Literal["cosine", "euclidean"],
                  top_n: int):
         super().__init__(vocab)
         self.embedder = embedder
         self.accuracy = CategoricalAccuracy()
         self.target_dataset = target_dataset
         self.top_n = top_n
+        self.distance_function = function_for_distance_metric(distance_metric)
 
         if not all(inst['span_embeddings'].array.shape[0] == 1 for inst in self.target_dataset):
             raise NotImplemented("All spans must be length 1")
@@ -62,8 +74,8 @@ class SemcorRetriever(Model):
         # compute similarities
         query_embedding = embedded_text[0][span_start]
         query_embedding = query_embedding.reshape((1, -1))
-        dist = cosine_similarity(self.target_dataset_embeddings, query_embedding)
-        indices = torch.argsort(dist, descending=True)
+        distances = self.distance_function(self.target_dataset_embeddings, query_embedding)
+        indices = torch.argsort(distances, descending=False)
 
         # return top n
         result = {f'top_{self.top_n}': []}
@@ -75,7 +87,7 @@ class SemcorRetriever(Model):
                 'sentence': format_sentence([t.text for t in instance['text'].tokens],
                                             span.span_start, span.span_end),
                 'label': str(instance['lemma_label'].label),
-                'cosine_sim': dist[i].item()
+                'distance': distances[i].item()
             })
         result[f'top_{self.top_n}'] = [result[f'top_{self.top_n}']]
         #pprint(result)
