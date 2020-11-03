@@ -8,3 +8,5 @@ embeddings/
 .mypy_cache/
 stats/
 *predictions/
+.ipynb_checkpoints
+
