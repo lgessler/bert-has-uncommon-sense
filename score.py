@@ -8,10 +8,10 @@ N = 50
 
 
 def precisions_at_k(df, pickle_path=None, min_train_freq=5):
-    if pickle_path is not None:
-        data = pickle_read(pickle_path)
-        if data is not None:
-            return data
+    #if pickle_path is not None:
+    #    data = pickle_read(pickle_path)
+    #    if data is not None:
+    #        return data
     # k -> name of exact metric (incl. total) -> count
     # Dict[int, Dict[str, int]]
 
@@ -21,33 +21,38 @@ def precisions_at_k(df, pickle_path=None, min_train_freq=5):
             return 0
         return defaultdict(f2)
     correct_at_k = defaultdict(f1)
-    
+
     for _, row in tqdm(df.iterrows()):
         label = row.label
         synset = row.synset
         lemma = row.lemma
-        if row.label_freq_in_train < min_train_freq:
-            continue
-        
-        for k in range(1, N+1):
-            labels = [getattr(row, f"label_{i}") for i in range(1, k+1)]
-            synsets = [getattr(row, f"synset_{i}") for i in range(1, k+1)]
-            lemmas = [getattr(row, f"lemma_{i}") for i in range(1, k+1)]
-            correct_at_k[k]['label'] +=  len([x for x in labels if x == label])
-            correct_at_k[k]['synset'] += len([x for x in synsets if x == synset])
-            correct_at_k[k]['lemma'] +=  len([x for x in lemmas if x == lemma])
+        for k in range(1, N + 1):
+            #correct_at_k[k]['label'] = correct_at_k[k - 1]['label']
+            #correct_at_k[k]['synset'] = correct_at_k[k - 1]['synset']
+            #correct_at_k[k]['lemma'] = correct_at_k[k - 1]['lemma']
+            #correct_at_k[k]['synset_different_lemma'] = correct_at_k[k - 1]['synset_different_lemma']
+            if row.label_freq_in_train < min_train_freq:
+                continue
+
+            correct_at_k[k]['label'] += (getattr(row, f'label_{k}') == label)
+            correct_at_k[k]['synset'] += (getattr(row, f'synset_{k}') == synset)
+            correct_at_k[k]['lemma'] += (getattr(row, f'lemma_{k}') == lemma)
+            correct_at_k[k]['synset_different_lemma'] += (
+                    + ((synset == getattr(row, f'synset_{k}')) and (lemma != getattr(row, f'lemma_{k}')))
+            )
             correct_at_k[k]['total'] += k
 
     ps_at_k = defaultdict(lambda: dict())
     for k in range(1, N+1):
-        for l in ['label', 'synset', 'lemma']:
-            ps_at_k[k][l] = correct_at_k[k][l] / correct_at_k[k]['total'] 
+        for l in ['label', 'synset', 'lemma', 'synset_different_lemma']:
+            correct_at_k[k][l] += correct_at_k[k-1][l]
+            ps_at_k[k][l] = correct_at_k[k][l] / correct_at_k[k]['total']
 
-    if pickle_path is not None:
-        ps_at_k = dict(ps_at_k)
-        for key, value in ps_at_k.items():
-            ps_at_k[key] = dict(value)
-        pickle_write(ps_at_k, pickle_path)
+    #if pickle_path is not None:
+    ps_at_k = dict(ps_at_k)
+    for key, value in ps_at_k.items():
+        ps_at_k[key] = dict(value)
+    pickle_write(ps_at_k, pickle_path)
     return ps_at_k
 
 
@@ -58,6 +63,7 @@ def main():
 
     df = pd.read_csv(args.predictions_tsv, sep="\t")
     for train_freq in [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]:
+        print("Cutoff:", train_freq)
         precisions_at_k(df, pickle_path=args.predictions_tsv + f'.{train_freq}.pkl', min_train_freq=train_freq)
 
 
