@@ -1,103 +1,21 @@
 import argparse
 import csv
 import os
-import pickle
 from collections import Counter
 
 import tqdm
-
-from sembre import SemcorReader, SemcorRetriever, SemcorPredictor, format_sentence
-from sembre.embedder_model import EmbedderModelPredictor, EmbedderModel, EmbedderDatasetReader
 import torch
-from transformers import BertTokenizer
 from allennlp.data import Vocabulary
-from allennlp.data.token_indexers import PretrainedTransformerMismatchedIndexer, SingleIdTokenIndexer
-from allennlp.modules.token_embedders import PretrainedTransformerMismatchedEmbedder, Embedding
-from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
-
-
-# swappable elements --------------------------------------------------------------------------------
-def indexer_for_embedder(embedding_name):
-    if embedding_name.startswith('bert-'):
-        return PretrainedTransformerMismatchedIndexer(embedding_name, namespace="tokens")
-    else:
-        return SingleIdTokenIndexer(namespace="tokens")
-
-
-def embedder_for_embedding(embedding_name):
-    vocab = Vocabulary()
-    if embedding_name.startswith('bert-'):
-        tokenizer = BertTokenizer.from_pretrained(embedding_name)
-        for word in tokenizer.vocab.keys():
-            vocab.add_token_to_namespace(word, "tokens")
-        token_embedders = {"tokens": PretrainedTransformerMismatchedEmbedder(model_name=embedding_name)}
-    else:
-        with open(embedding_name, 'r', encoding='utf-8') as f:
-            count = 0
-            for i, line in enumerate(f.readlines()):
-                vocab.add_token_to_namespace(line[0:line.find(' ')], namespace="tokens")
-                count += 1
-        token_embedders = {
-            "tokens": Embedding(
-                embedding_dim=300,
-                vocab=vocab,
-                pretrained_file=embedding_name,
-                trainable=False
-            )
-        }
-
-    return vocab, BasicTextFieldEmbedder(token_embedders)
-
-
-def predictor_for_train_reader(embedding_name):
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-    indexer = indexer_for_embedder(embedding_name)
-    vocab, embedder = embedder_for_embedding(embedding_name)
-    model = EmbedderModel(vocab=vocab, embedder=embedder).to(device).eval()
-    predictor = EmbedderModelPredictor(
-        model=model,
-        dataset_reader=EmbedderDatasetReader(token_indexers={'tokens': indexer})
-    )
-    return predictor
-
-
-# reading --------------------------------------------------------------------------------
-def read_dataset_cached(split, filepath, embedding_name, with_embeddings=False):
-    if with_embeddings:
-        embedding_predictor = predictor_for_train_reader(embedding_name)
-    else:
-        embedding_predictor = None
-
-    indexer = indexer_for_embedder(embedding_name)
-    reader = SemcorReader(
-        split=split,
-        token_indexers={'tokens': indexer},
-        embedding_predictor=embedding_predictor
-    )
-
-    pickle_name = filepath + ('__' + embedding_name).replace('embeddings/', '')
-    pickle_path = 'dataset_cache/' + pickle_name + '.pkl'
-    if os.path.isfile(pickle_path):
-        print(f"Reading split {split} from cache at {pickle_path}")
-        with open(pickle_path, 'rb') as f:
-            return pickle.load(f)
-
-    print(f"Reading split {split} from nltk")
-    dataset = reader.read(pickle_name)
-    os.makedirs('dataset_cache', exist_ok=True)
-    with open(pickle_path, 'wb') as f:
-        print(f"Caching {split} in {pickle_path}")
-        pickle.dump(dataset, f)
-
-    return dataset
+from bssp.common.reading import read_dataset_cached, indexer_for_embedder, embedder_for_embedding
+from bssp.semcor.model import SemcorRetriever, SemcorPredictor, format_sentence
+from bssp.semcor.dataset_reader import SemcorReader
 
 
 def read_datasets(embedding_name, train_filepath, test_filepath):
-    train_dataset = read_dataset_cached('train', train_filepath, embedding_name, with_embeddings=True)
+    train_dataset = read_dataset_cached(SemcorReader, 'train', train_filepath, embedding_name, with_embeddings=True)
     print(train_dataset[0])
     print(train_dataset[0]['span_embeddings'].array)
-    test_dataset = read_dataset_cached('test', test_filepath, embedding_name, with_embeddings=False)
+    test_dataset = read_dataset_cached(SemcorReader, 'test', test_filepath, embedding_name, with_embeddings=False)
     return train_dataset, test_dataset
 
 
@@ -114,8 +32,8 @@ def dataset_stats(filepath, dataset):
         synsets[synset] += 1
         lemmas[lemma] += 1
 
-    os.makedirs('stats', exist_ok=True)
-    path = f'stats/{filepath}'
+    os.makedirs('cache/stats', exist_ok=True)
+    path = f'cache/stats/{filepath}'
     with open(path + '_label_freq.tsv', 'w', encoding='utf-8') as f:
         for item, freq in sorted(labels.items(), key=lambda x:-x[1]):
             f.write(f"{item}\t{freq}\n")
@@ -173,8 +91,8 @@ def main(embedding_name, distance_metric, train_filepath, test_filepath, top_n=5
     dummy_reader = SemcorReader(split='train', token_indexers={'tokens': indexer})
     predictor = SemcorPredictor(model=model, dataset_reader=dummy_reader)
 
-    os.makedirs(f'{distance_metric}_predictions', exist_ok=True)
-    predictions_path = f'{distance_metric}_predictions/{embedding_name.replace("embeddings/", "")}.tsv'
+    os.makedirs(f'cache/{distance_metric}_predictions', exist_ok=True)
+    predictions_path = f'cache/{distance_metric}_predictions/{embedding_name.replace("embeddings/", "")}.tsv'
     with open(predictions_path, 'wt') as f:
         tsv_writer = csv.writer(f, delimiter='\t')
         header = ['sentence', 'label', 'synset', 'lemma', 'label_freq_in_train']

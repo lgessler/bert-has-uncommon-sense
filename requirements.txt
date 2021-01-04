@@ -1,2 +1,2 @@
 allennlp
-pytest
+allennlp_models

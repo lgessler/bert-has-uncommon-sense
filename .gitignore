@@ -1,12 +1,10 @@
 __pycache__
 .idea
 *.pyc
-model/
 scratch.py
-dataset_cache/
-embeddings/
 .mypy_cache/
-stats/
-*predictions/
 .ipynb_checkpoints
+
+model/
 data/
+cache/

@@ -3,15 +3,14 @@ from itertools import islice
 import random
 
 import numpy as np
-from sembre.embedder_model import EmbedderModelPredictor
-from nltk.corpus import semcor as sc
-
-from allennlp.data import DatasetReader, Instance, Vocabulary
+from allennlp.data import DatasetReader, Instance
 from allennlp.data.fields import LabelField, TextField, SpanField, ArrayField
-from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer
-from allennlp.data.tokenizers import Token, Tokenizer, WhitespaceTokenizer
+from allennlp.data.token_indexers import TokenIndexer
+from allennlp.data.tokenizers import Token
 from allennlp.common.util import logger
 from nltk.corpus.reader import Lemma
+from nltk.corpus import semcor as sc
+from bssp.common.embedder_model import EmbedderModelPredictor
 
 
 def tokens_of_sentence(sentence) -> List[str]:

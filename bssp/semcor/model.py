@@ -8,7 +8,6 @@ from torch.nn.functional import cosine_similarity, pairwise_distance
 from allennlp.data import Vocabulary, TokenIndexer, Instance, AllennlpDataset
 from allennlp.models import Model
 from allennlp.modules import TokenEmbedder, TextFieldEmbedder
-from allennlp.nn import util
 from allennlp.predictors import Predictor
 from allennlp.training.metrics import CategoricalAccuracy
 from allennlp.common.util import logger, JsonDict
