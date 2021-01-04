@@ -97,11 +97,11 @@ def main():
 
 
 if __name__ == '__main__':
-    with open('synset_freqs.tsv', 'r') as f:
+    with open('cache/synset_freqs.tsv', 'r') as f:
         SYNSET_FREQS = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
-    with open('lemma_freqs.tsv', 'r') as f:
+    with open('cache/lemma_freqs.tsv', 'r') as f:
         LEMMA_FREQS = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
-    with open('label_freqs.tsv', 'r') as f:
+    with open('cache/label_freqs.tsv', 'r') as f:
         LABEL_FREQS = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
 
     main()

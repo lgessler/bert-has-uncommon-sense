@@ -1,2 +1,4 @@
 allennlp
 allennlp_models
+pandas
+git+https://github.com/lgessler/ldg-personal.git

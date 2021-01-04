@@ -55,7 +55,7 @@ def predictor_for_train_reader(embedding_name):
     return predictor
 
 
-def read_dataset_cached(reader_cls, split, filepath, embedding_name, with_embeddings=False):
+def read_dataset_cached(reader_cls, corpus_name, split, embedding_name, with_embeddings=False):
     if with_embeddings:
         embedding_predictor = predictor_for_train_reader(embedding_name)
     else:
@@ -68,7 +68,7 @@ def read_dataset_cached(reader_cls, split, filepath, embedding_name, with_embedd
         embedding_predictor=embedding_predictor
     )
 
-    pickle_name = filepath + ('__' + embedding_name).replace('cache/embeddings/', '')
+    pickle_name = corpus_name + "_" + split + ('__' + embedding_name).replace('cache/embeddings/', '')
     pickle_path = 'cache/dataset/' + pickle_name + '.pkl'
     if os.path.isfile(pickle_path):
         print(f"Reading split {split} from cache at {pickle_path}")
@@ -77,7 +77,7 @@ def read_dataset_cached(reader_cls, split, filepath, embedding_name, with_embedd
 
     print(f"Reading split {split}")
     dataset = reader.read(pickle_name)
-    os.makedirs('dataset_cache', exist_ok=True)
+    os.makedirs('cache/dataset/', exist_ok=True)
     with open(pickle_path, 'wb') as f:
         print(f"Caching {split} in {pickle_path}")
         pickle.dump(dataset, f)
