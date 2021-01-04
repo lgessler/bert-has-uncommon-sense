@@ -9,4 +9,4 @@ embeddings/
 stats/
 *predictions/
 .ipynb_checkpoints
-
+data/

@@ -1,4 +1,6 @@
 import argparse
+from collections import defaultdict
+
 import pandas as pd
 import os
 from tqdm import tqdm
@@ -54,6 +56,7 @@ INSTANCE_TEMPLATE = """
 <div class="ui container" style="padding-top: 3em;">
 <p><strong>Sentence:</strong> {sentence}</p>
 <p><strong>Label:</strong> {label}</p>
+<p><strong>Rarity:</strong> {rarity}</p>
 <p><strong>Results:</strong></p>
 <table class="ui celled padded table">
 <thead>
@@ -106,7 +109,9 @@ def generate_instance_page(number, base_dir, tsv_name, row):
     html_str = INSTANCE_TEMPLATE.format(
         sentence=enh_sent(escape(row.sentence)),
         label=row.label,
-        body=body
+        body=body,
+        rarity=str(LABEL_FREQS[row.label] / LEMMA_FREQS[row.lemma])
+                   + f" ({LABEL_FREQS[row.label]}/{LEMMA_FREQS[row.lemma]})"
     )
     with open(f'{base_dir}/html/{tsv_name}_{number}.html', 'w') as f:
         f.write(html_str)
@@ -118,10 +123,11 @@ def main(tsv_filepath):
     print(dir, tsv_name)
 
     body_str = ""
+    rarity2body = defaultdict(str)
     df = pd.read_csv(tsv_filepath, sep="\t")
     for i, row in tqdm(df.iterrows()):
         format_result = lambda s: '<span style="background-color:#fff791; padding:2px; border-radius:3px;">' + s + '</span>' if s != row.label else s
-        body_str += HTML_MAIN_LINE_TEMPLATE.format(
+        s = HTML_MAIN_LINE_TEMPLATE.format(
             number=i,
             tsv_name=tsv_name,
             sentence=enh_sent(escape(row.sentence)),
@@ -132,13 +138,28 @@ def main(tsv_filepath):
             label_4=format_result(escape(row.label_4)),
             label_5=format_result(escape(row.label_5)),
         )
+        body_str += s
         generate_instance_page(i, base_dir, tsv_name, row)
+
+        for rarity_threshold in [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]:
+            rarity = LABEL_FREQS[row.label] / LEMMA_FREQS[row.lemma]
+            if rarity <= rarity_threshold:
+                rarity2body[int(rarity_threshold * 100)] += s
 
     with open(f'{base_dir}/html/{tsv_name}_index.html', 'w') as f:
         f.write(HTML_MAIN_TEMPLATE.format(body=body_str))
 
+    for rarity_threshold in [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]:
+        with open(f'{base_dir}/html/{tsv_name}_index.{int(rarity_threshold * 100)}.html', 'w') as f:
+            f.write(HTML_MAIN_TEMPLATE.format(body=rarity2body[int(rarity_threshold * 100)]))
 
 if __name__ == '__main__':
+    with open('synset_freqs.tsv', 'r') as f:
+        SYNSET_FREQS = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
+    with open('lemma_freqs.tsv', 'r') as f:
+        LEMMA_FREQS = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
+    with open('label_freqs.tsv', 'r') as f:
+        LABEL_FREQS = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "tsv_file",
