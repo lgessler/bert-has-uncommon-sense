@@ -1,5 +1,5 @@
 import os
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Literal
 from allennlp.data import DatasetReader, Instance, TokenIndexer, Token
 from allennlp.data.fields import ArrayField, LabelField, SpanField, TextField
 from allennlp_models.common.ontonotes import Ontonotes, OntonotesSentence
@@ -11,10 +11,12 @@ from bssp.common.embedder_model import EmbedderModelPredictor
 @DatasetReader.register('ontonotes')
 class OntonotesReader(DatasetReader):
     def __init__(self,
+                 split: Literal['train', 'test', 'all', 'none'],
                  token_indexers: Dict[str, TokenIndexer] = None,
                  embedding_predictor: EmbedderModelPredictor = None,
                  **kwargs):
         super().__init__(**kwargs)
+        self.split = split
         self.token_indexers = token_indexers
         self.embedding_predictor = embedding_predictor
 
@@ -34,7 +36,7 @@ class OntonotesReader(DatasetReader):
             'lemma_label': lemma_label_field
         }
         if self.embedding_predictor:
-            fields['span_embeddings'] = ArrayField(embeddings[span_start:span_end, :])
+            fields['span_embeddings'] = ArrayField(embeddings[span_start:span_end + 1, :])
 
         return Instance(fields)
 
@@ -48,15 +50,24 @@ class OntonotesReader(DatasetReader):
                     else:
                         tokens = sent.words
                         if self.embedding_predictor:
-                            embeddings = np.array(self.embedding_predictor.predict(tokens))
+                            embeddings = np.array(self.embedding_predictor.predict(tokens)['embeddings'])
                         else:
                             embeddings = None
+                        if not (len(sent.words) == len(sent.word_senses) == len(sent.predicate_lemmas)):
+                            print("!!!!!!")
+                            print(sent.words)
+                            print(sent.word_senses)
+                            print(sent.predicate_lemmas)
+                            print(len(sent.words), len(sent.word_senses), len(sent.predicate_lemmas))
+
                         for word, sense, lemma, i in zip(sent.words,
                                                          sent.word_senses,
                                                          sent.predicate_lemmas,
                                                          range(len(sent.words))):
                             if sense is not None:
-                                yield self.text_to_instance(tokens, i, i+1, lemma, embeddings=embeddings)
+                                yield self.text_to_instance(
+                                    tokens, i, i, lemma + "_" + str(sense), embeddings=embeddings
+                                )
 
 
 

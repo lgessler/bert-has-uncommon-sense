@@ -12,10 +12,10 @@ from bssp.semcor.dataset_reader import SemcorReader
 
 
 def read_datasets(embedding_name, train_filepath, test_filepath):
-    train_dataset = read_dataset_cached(SemcorReader, 'semcor', 'train', embedding_name, with_embeddings=True)
+    train_dataset = read_dataset_cached(SemcorReader, None, 'semcor', 'train', embedding_name, with_embeddings=True)
     print(train_dataset[0])
     print(train_dataset[0]['span_embeddings'].array)
-    test_dataset = read_dataset_cached(SemcorReader, 'semcor', 'test', embedding_name, with_embeddings=False)
+    test_dataset = read_dataset_cached(SemcorReader, None, 'semcor', 'test', embedding_name, with_embeddings=False)
     return train_dataset, test_dataset
 
 

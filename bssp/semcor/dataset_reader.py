@@ -71,7 +71,7 @@ class SemcorReader(DatasetReader):
             'lemma_label': lemma_label_field
         }
         if self.embedding_predictor:
-            fields['span_embeddings'] = ArrayField(embeddings[span_start:span_end, :])
+            fields['span_embeddings'] = ArrayField(embeddings[span_start:span_end + 1, :])
 
         return Instance(fields)
 
