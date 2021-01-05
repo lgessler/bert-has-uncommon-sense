@@ -106,11 +106,14 @@ class SemcorReader(DatasetReader):
             else:
                 embeddings = None
             for span_tokens, (i, j), lemma in spans:
+                # j is currently exclusive, but SpanField is inclusive--subtract 1 from j
+                j -= 1
+
                 # don't consider multi-token words
-                if j - i != 1:
+                if j != i:
                     print('Skipping multiword instance ' + ' '.join(span_tokens))
                     continue
-                if j >= len(tokens):
+                if j >= len(tokens) - 1:
                     print(f"out of j out of bounds!\n\ttext: {tokens}\n\t{(i,j)}\n\t{lemma_to_string(lemma)}")
                     continue
                 yield self.text_to_instance(tokens, i, j, lemma_to_string(lemma), embeddings=embeddings)
