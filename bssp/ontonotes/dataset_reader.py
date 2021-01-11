@@ -1,4 +1,5 @@
 import os
+from random import random
 from typing import Dict, Iterable, List, Literal
 from allennlp.data import DatasetReader, Instance, TokenIndexer, Token
 from allennlp.data.fields import ArrayField, LabelField, SpanField, TextField
@@ -60,14 +61,21 @@ class OntonotesReader(DatasetReader):
                             print(sent.predicate_lemmas)
                             print(len(sent.words), len(sent.word_senses), len(sent.predicate_lemmas))
 
-                        for word, sense, lemma, i in zip(sent.words,
-                                                         sent.word_senses,
-                                                         sent.predicate_lemmas,
-                                                         range(len(sent.words))):
+                        for word, sense, lemma, pos_tag, i in zip(sent.words,
+                                                                  sent.word_senses,
+                                                                  sent.predicate_lemmas,
+                                                                  sent.pos_tags,
+                                                                  range(len(sent.words))):
                             if sense is not None:
-                                yield self.text_to_instance(
-                                    tokens, i, i, lemma + "_" + str(sense), embeddings=embeddings
+                                simplified_pos = "n" if pos_tag.startswith("N") else "v" if pos_tag.startswith("V") else None
+                                if simplified_pos is None:
+                                    raise Exception(f"POS tag not for noun or verb: {pos_tag}")
+                                instance = self.text_to_instance(
+                                    tokens, i, i, f"{lemma}_{simplified_pos}_{sense}", embeddings=embeddings
                                 )
+                                if random() < 0.0001:
+                                    print(instance)
+                                yield instance
 
 
 
