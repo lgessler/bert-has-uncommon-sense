@@ -1,4 +1,5 @@
 import random
+from collections import defaultdict
 from pprint import pprint
 from typing import Dict, Any, List, Union, Literal
 
@@ -11,10 +12,11 @@ from allennlp.modules import TokenEmbedder, TextFieldEmbedder
 from allennlp.predictors import Predictor
 from allennlp.training.metrics import CategoricalAccuracy
 from allennlp.common.util import logger, JsonDict
+from tqdm import tqdm
 
 
 def format_sentence(sentence, i, j):
-    return " ".join(sentence[:i] + ['>>' + sentence[i] + '<<'] + sentence[j:])
+    return " ".join(sentence[:i] + ['>>' + sentence[i] + '<<'] + sentence[j+1:])
 
 
 def is_bert(embedder: TextFieldEmbedder):
@@ -39,13 +41,15 @@ class SemcorRetriever(Model):
                  target_dataset: AllennlpDataset,
                  device: torch.device,
                  distance_metric: Literal["cosine", "euclidean"],
-                 top_n: int):
+                 top_n: int,
+                 same_lemma: bool = False):
         super().__init__(vocab)
         self.embedder = embedder
         self.accuracy = CategoricalAccuracy()
         self.target_dataset = target_dataset
         self.top_n = top_n
         self.distance_function = function_for_distance_metric(distance_metric)
+        self.same_lemma = same_lemma
 
         if not all(inst['span_embeddings'].array.shape[0] == 1 for inst in self.target_dataset):
             raise NotImplemented("All spans must be length 1")
@@ -53,10 +57,20 @@ class SemcorRetriever(Model):
             tuple(torch.tensor(inst['span_embeddings'].array[0]) for inst in target_dataset)
         ).to(device)
 
+        # build index from lemma to all instances that have it
+        self.lemma_index = defaultdict(list)
+        for i, instance in enumerate(target_dataset):
+            lemma = str(instance['lemma_label'].label).split('_')[0]
+            self.lemma_index[lemma].append(i)
+
+
     def forward(self,
                 text: Dict[str, Dict[str, torch.Tensor]],
                 lemma_span: torch.Tensor,
                 lemma_label: torch.Tensor = None) -> Dict[str, torch.Tensor]:
+        # note the lemma of the query
+        query_lemma_label_string = self.vocab.get_token_from_index(lemma_label.item(), namespace='labels')
+        query_lemma_string = query_lemma_label_string[:query_lemma_label_string.find('_')]
 
         # get the sentence embedding
         # contextualized and uncontextualized embedders need separate handling
@@ -70,27 +84,42 @@ class SemcorRetriever(Model):
         if span_end - span_start > 1:
             raise NotImplemented("Only single-word spans are currently supported")
 
-        # compute similarities
+        # if same_lemma is set to true, enforce the constraint that the lemma (but not necessarily
+        # the sense of the lemma) be the same for both the word in the query and the word we're
+        # looking at in the results
+        if self.same_lemma:
+            lemma_indexes = self.lemma_index[query_lemma_string]
+            target_embeddings = self.target_dataset_embeddings[lemma_indexes]
+            target_instances = [self.target_dataset[index] for index in lemma_indexes]
+        else:
+            target_embeddings = self.target_dataset_embeddings
+            target_instances = self.target_dataset
+
+        # compute similarities and rank them
         query_embedding = embedded_text[0][span_start]
         query_embedding = query_embedding.reshape((1, -1))
-        distances = self.distance_function(self.target_dataset_embeddings, query_embedding)
-        indices = torch.argsort(distances, descending=False)
+        distances = self.distance_function(target_embeddings, query_embedding)
+        ranked_indices = torch.argsort(distances, descending=False)
 
         # return top n
-        result = {f'top_{self.top_n}': []}
-        top_n = indices[:self.top_n]
-        for i in top_n:
-            instance = self.target_dataset[i]
+        top_n_results = []
+        for index in ranked_indices:
+            if len(top_n_results) >= self.top_n:
+                break
+
+            instance = target_instances[index]
             span = instance['lemma_span']
-            result[f'top_{self.top_n}'].append({
+            instance_lemma_label = str(instance['lemma_label'].label)
+
+            result_dict = {
                 'sentence': format_sentence([t.text for t in instance['text'].tokens],
                                             span.span_start, span.span_end),
-                'label': str(instance['lemma_label'].label),
-                'distance': distances[i].item()
-            })
-        result[f'top_{self.top_n}'] = [result[f'top_{self.top_n}']]
-        #pprint(result)
-
+                'label': instance_lemma_label,
+                'distance': distances[index].item()
+            }
+            top_n_results.append(result_dict)
+        # wrap in another list because we have a batch size of 1
+        result = {f'top_{self.top_n}': [top_n_results]}
         return result
 
 
