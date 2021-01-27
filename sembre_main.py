@@ -32,8 +32,8 @@ def dataset_stats(filepath, dataset):
         synsets[synset] += 1
         lemmas[lemma] += 1
 
-    os.makedirs('cache/stats', exist_ok=True)
-    path = f'cache/stats/{filepath}'
+    os.makedirs('cache/semcor_stats', exist_ok=True)
+    path = f'cache/semcor_stats/{filepath}'
     with open(path + '_label_freq.tsv', 'w', encoding='utf-8') as f:
         for item, freq in sorted(labels.items(), key=lambda x:-x[1]):
             f.write(f"{item}\t{freq}\n")
@@ -91,8 +91,8 @@ def main(embedding_name, distance_metric, train_filepath, test_filepath, top_n=5
     dummy_reader = SemcorReader(split='train', token_indexers={'tokens': indexer})
     predictor = SemcorPredictor(model=model, dataset_reader=dummy_reader)
 
-    os.makedirs(f'cache/{distance_metric}_predictions', exist_ok=True)
-    predictions_path = f'cache/{distance_metric}_predictions/{embedding_name.replace("embeddings/", "")}.tsv'
+    os.makedirs(f'cache/semcor_{distance_metric}_predictions', exist_ok=True)
+    predictions_path = f'cache/semcor_{distance_metric}_predictions/{embedding_name.replace("embeddings/", "")}.tsv'
     with open(predictions_path, 'wt') as f:
         tsv_writer = csv.writer(f, delimiter='\t')
         header = ['sentence', 'label', 'synset', 'lemma', 'label_freq_in_train']
