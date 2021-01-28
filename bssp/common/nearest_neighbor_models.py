@@ -33,8 +33,8 @@ def function_for_distance_metric(metric_name):
         raise Exception(f"Invalid distance metric: \"{metric_name}\"")
 
 
-@Model.register('semcor_retriever')
-class SemcorRetriever(Model):
+@Model.register('nearest_neighbor_retriever')
+class NearestNeighborRetriever(Model):
     def __init__(self,
                  vocab: Vocabulary,
                  embedder: TextFieldEmbedder,
@@ -60,17 +60,16 @@ class SemcorRetriever(Model):
         # build index from lemma to all instances that have it
         self.lemma_index = defaultdict(list)
         for i, instance in enumerate(target_dataset):
-            lemma = str(instance['lemma_label'].label).split('_')[0]
+            lemma = str(instance['label'].label).split('_')[0]
             self.lemma_index[lemma].append(i)
-
 
     def forward(self,
                 text: Dict[str, Dict[str, torch.Tensor]],
-                lemma_span: torch.Tensor,
-                lemma_label: torch.Tensor = None) -> Dict[str, torch.Tensor]:
+                label_span: torch.Tensor,
+                label: torch.Tensor = None) -> Dict[str, torch.Tensor]:
         # note the lemma of the query
-        query_lemma_label_string = self.vocab.get_token_from_index(lemma_label.item(), namespace='labels')
-        query_lemma_string = query_lemma_label_string[:query_lemma_label_string.find('_')]
+        query_label_string = self.vocab.get_token_from_index(label.item(), namespace='labels')
+        query_lemma_string = query_label_string[:query_label_string.find('_')]
 
         # get the sentence embedding
         # contextualized and uncontextualized embedders need separate handling
@@ -79,8 +78,8 @@ class SemcorRetriever(Model):
         # get information about the query
         if embedded_text.shape[0] > 1:
             raise NotImplemented("Use single-item batches")
-        span_start = lemma_span[0][0].item()
-        span_end = lemma_span[0][1].item()
+        span_start = label_span[0][0].item()
+        span_end = label_span[0][1].item()
         if span_end - span_start > 1:
             raise NotImplemented("Only single-word spans are currently supported")
 
@@ -108,13 +107,13 @@ class SemcorRetriever(Model):
                 break
 
             instance = target_instances[index]
-            span = instance['lemma_span']
-            instance_lemma_label = str(instance['lemma_label'].label)
+            span = instance['label_span']
+            instance_label = str(instance['label'].label)
 
             result_dict = {
                 'sentence': format_sentence([t.text for t in instance['text'].tokens],
                                             span.span_start, span.span_end),
-                'label': instance_lemma_label,
+                'label': instance_label,
                 'distance': distances[index].item()
             }
             top_n_results.append(result_dict)
@@ -123,23 +122,23 @@ class SemcorRetriever(Model):
         return result
 
 
-class SemcorPredictor(Predictor):
+class NearestNeighborPredictor(Predictor):
     def predict(self,
                 sentence: List[str],
-                lemma_span_start: int,
-                lemma_span_end: int,
-                lemma_label: str) -> JsonDict:
+                label_span_start: int,
+                label_span_end: int,
+                label: str) -> JsonDict:
         return self.predict_json({
             "sentence": sentence,
-            "lemma_span_start": lemma_span_start,
-            "lemma_span_end": lemma_span_end,
-            "lemma_label": lemma_label
+            "label_span_start": label_span_start,
+            "label_span_end": label_span_end,
+            "label": label
         })
 
     def _json_to_instance(self, json_dict: JsonDict) -> Instance:
         return self._dataset_reader.text_to_instance(
             tokens=json_dict['sentence'],
-            span_start=json_dict['lemma_span_start'],
-            span_end=json_dict['lemma_span_end'],
-            lemma=json_dict['lemma_label'],
+            span_start=json_dict['label_span_start'],
+            span_end=json_dict['label_span_end'],
+            lemma=json_dict['label'],
         )

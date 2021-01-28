@@ -9,6 +9,11 @@ import numpy as np
 from bssp.common.embedder_model import EmbedderModelPredictor
 
 
+def lemma_from_label(label):
+    """ Turn something like "make_v_1.0" into "make_v" """
+    return label[:label.rfind('_')]
+
+
 @DatasetReader.register('ontonotes')
 class OntonotesReader(DatasetReader):
     def __init__(self,
@@ -25,16 +30,16 @@ class OntonotesReader(DatasetReader):
                          tokens: List[str],
                          span_start: int,
                          span_end: int,
-                         lemma: str,
+                         label: str,
                          embeddings: np.ndarray = None) -> Instance:
         Tokens = [Token(t) for t in tokens]
         text_field = TextField(Tokens, self.token_indexers)
         lemma_span_field = SpanField(span_start, span_end, text_field)
-        lemma_label_field = LabelField(lemma)
+        label_field = LabelField(label)
         fields = {
             'text': text_field,
-            'lemma_span': lemma_span_field,
-            'lemma_label': lemma_label_field
+            'label_span': lemma_span_field,
+            'label': label_field
         }
         if self.embedding_predictor:
             fields['span_embeddings'] = ArrayField(embeddings[span_start:span_end + 1, :])

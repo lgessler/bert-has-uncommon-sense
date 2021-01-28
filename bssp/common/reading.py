@@ -1,3 +1,7 @@
+"""
+Convenience functions used in the setup of experiments. These are necessary because we're not using
+allennlp's default config-based execution environment.
+"""
 import pickle
 import os
 import torch
@@ -11,6 +15,7 @@ from bssp.common.embedder_model import EmbedderModel, EmbedderDatasetReader, Emb
 
 
 def indexer_for_embedder(embedding_name):
+    """Get a token indexer that's appropriate for the embedding type"""
     if embedding_name.startswith('bert-'):
         return PretrainedTransformerMismatchedIndexer(embedding_name, namespace="tokens")
     else:
@@ -18,6 +23,8 @@ def indexer_for_embedder(embedding_name):
 
 
 def embedder_for_embedding(embedding_name):
+    """Given the name of an embedding, return its Vocabulary and a BasicTextFieldEmbedder on its tokens.
+    (A BasicTextFieldEmbbeder can be called on a tensor with token indexes to produce embeddings.)"""
     vocab = Vocabulary()
     if embedding_name.startswith('bert-'):
         tokenizer = BertTokenizer.from_pretrained(embedding_name)
@@ -43,6 +50,10 @@ def embedder_for_embedding(embedding_name):
 
 
 def predictor_for_train_reader(embedding_name):
+    """
+    When we are reading data from a train split, we want to store the embedding of the target word
+    with the instance. This method returns a predictor that will simply allow us to predict embeddings.
+    """
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     indexer = indexer_for_embedder(embedding_name)

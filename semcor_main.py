@@ -7,8 +7,8 @@ import tqdm
 import torch
 from allennlp.data import Vocabulary
 from bssp.common.reading import read_dataset_cached, indexer_for_embedder, embedder_for_embedding
-from bssp.semcor.model import SemcorRetriever, SemcorPredictor, format_sentence
-from bssp.semcor.dataset_reader import SemcorReader
+from bssp.common.nearest_neighbor_models import NearestNeighborRetriever, NearestNeighborPredictor, format_sentence
+from bssp.semcor.dataset_reader import SemcorReader, synset_from_label, lemma_from_label
 
 
 def read_datasets(embedding_name, train_filepath, test_filepath):
@@ -25,7 +25,7 @@ def dataset_stats(filepath, dataset):
     synsets = Counter()
 
     for instance in dataset:
-        label = instance['lemma_label'].label
+        label = instance['label'].label
         i = label.rfind('_')
         synset, lemma = label[:i], label[i+1:]
         labels[label] += 1
@@ -80,7 +80,7 @@ def main(embedding_name, distance_metric, train_filepath, test_filepath, top_n=5
     vocab.extend_from_vocab(label_vocab)
 
     print("Constructing model")
-    model = SemcorRetriever(
+    model = NearestNeighborRetriever(
         vocab=vocab,
         embedder=embedder,
         target_dataset=train_dataset,
@@ -89,7 +89,7 @@ def main(embedding_name, distance_metric, train_filepath, test_filepath, top_n=5
         top_n=top_n,
     ).eval().to(device)
     dummy_reader = SemcorReader(split='train', token_indexers={'tokens': indexer})
-    predictor = SemcorPredictor(model=model, dataset_reader=dummy_reader)
+    predictor = NearestNeighborPredictor(model=model, dataset_reader=dummy_reader)
 
     os.makedirs(f'cache/semcor_{distance_metric}_predictions', exist_ok=True)
     predictions_path = f'cache/semcor_{distance_metric}_predictions/{embedding_name.replace("embeddings/", "")}.tsv'
@@ -103,19 +103,19 @@ def main(embedding_name, distance_metric, train_filepath, test_filepath, top_n=5
         header += [f"distance_{i+1}" for i in range(top_n)]
         tsv_writer.writerow(header)
 
-        for instance in tqdm.tqdm([i for i in test_dataset if trlabc[i['lemma_label'].label] >= 5]):
+        for instance in tqdm.tqdm([i for i in test_dataset if trlabc[i['label'].label] >= 5]):
             d = predictor.predict_instance(instance)
             sentence = [t.text for t in instance['text'].tokens]
-            span = instance['lemma_span']
+            span = instance['label_span']
             sentence = format_sentence(sentence, span.span_start, span.span_end)
-            label = instance['lemma_label'].label
-            synset = label[:label.rfind('_')]
-            lemma = label[label.rfind('_')+1:]
-            label_freq_in_train = trlabc[instance['lemma_label'].label]
+            label = instance['label'].label
+            synset = synset_from_label(label)
+            lemma = lemma_from_label(label)
+            label_freq_in_train = trlabc[instance['label'].label]
             row = [sentence, label, synset, lemma, label_freq_in_train]
             row += [i['label'] for i in d[f'top_{top_n}']]
-            row += [i['label'][:i['label'].rfind('_')] for i in d[f'top_{top_n}']]
-            row += [i['label'][i['label'].rfind('_')+1:] for i in d[f'top_{top_n}']]
+            row += [synset_from_label(i['label']) for i in d[f'top_{top_n}']]
+            row += [lemma_from_label(i['label']) for i in d[f'top_{top_n}']]
             row += [i['sentence'] for i in d[f'top_{top_n}']]
             row += [i['distance'] for i in d[f'top_{top_n}']]
             tsv_writer.writerow(row)

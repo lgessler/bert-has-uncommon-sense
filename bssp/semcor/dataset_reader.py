@@ -13,6 +13,14 @@ from nltk.corpus import semcor as sc
 from bssp.common.embedder_model import EmbedderModelPredictor
 
 
+def synset_from_label(label):
+    return label[:label.rfind('_')]
+
+
+def lemma_from_label(label):
+    return label[label.rfind('_')+1:]
+
+
 def tokens_of_sentence(sentence) -> List[str]:
     tokens = []
     for item in sentence:

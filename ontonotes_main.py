@@ -18,8 +18,9 @@ from allennlp.data import Vocabulary
 from ldg.pickle import pickle_write
 
 from bssp.common.reading import read_dataset_cached, indexer_for_embedder, embedder_for_embedding
-from bssp.ontonotes.dataset_reader import OntonotesReader
-from bssp.semcor.model import SemcorRetriever, SemcorPredictor, format_sentence
+from bssp.common.util import dataset_stats
+from bssp.common.nearest_neighbor_models import NearestNeighborRetriever, NearestNeighborPredictor, format_sentence
+from bssp.ontonotes.dataset_reader import OntonotesReader, lemma_from_label
 
 TRAIN_FILEPATH = 'data/conll-formatted-ontonotes-5.0/data/train'
 DEVELOPMENT_FILEPATH = 'data/conll-formatted-ontonotes-5.0/data/development'
@@ -31,12 +32,12 @@ TEST_FILEPATH = 'data/conll-formatted-ontonotes-5.0/data/test'
 # - Bucket by lemma frequency and then use MAP etc to examine rarity
 # TODO: refer to email and figure out how words were chosen for sense annotation
 
+
 def read_datasets(embedding_name):
     train_dataset = read_dataset_cached(
         OntonotesReader, TRAIN_FILEPATH, 'ontonotes', 'train', embedding_name, with_embeddings=True
     )
     print(train_dataset[0])
-    print(train_dataset[0]['span_embeddings'].array)
     dev_dataset = read_dataset_cached(
         OntonotesReader, DEVELOPMENT_FILEPATH, 'ontonotes', 'dev', embedding_name, with_embeddings=False
     )
@@ -46,31 +47,9 @@ def read_datasets(embedding_name):
     return train_dataset, dev_dataset + test_dataset
 
 
-def dataset_stats(split, dataset):
-    labels = Counter()
-    lemmas = Counter()
-
-    for instance in dataset:
-        label = instance['lemma_label'].label
-        lemma = label[:label.rfind('_')]
-        labels[label] += 1
-        lemmas[lemma] += 1
-
-    os.makedirs('cache/ontonotes_stats', exist_ok=True)
-    path = f'cache/ontonotes_stats/{split}'
-    with open(path + '_label_freq.tsv', 'w', encoding='utf-8') as f:
-        for item, freq in sorted(labels.items(), key=lambda x:-x[1]):
-            f.write(f"{item}\t{freq}\n")
-    with open(path + '_lemma_freq.tsv', 'w', encoding='utf-8') as f:
-        for item, freq in sorted(lemmas.items(), key=lambda x:-x[1]):
-            f.write(f"{item}\t{freq}\n")
-
-    return labels, lemmas
-
-
 def stats(train_dataset, test_dataset):
-    train_labels, train_lemmas = dataset_stats('train', train_dataset)
-    testdev_labels, testdev_lemmas = dataset_stats('testdev', test_dataset)
+    train_labels, train_lemmas = dataset_stats('train', train_dataset, "ontonotes_stats", lemma_from_label)
+    testdev_labels, testdev_lemmas = dataset_stats('testdev', test_dataset, "ontonotes_stats", lemma_from_label)
 
     return train_labels, train_lemmas
 
@@ -103,7 +82,7 @@ def predict(embedding_name, distance_metric, top_n):
     vocab.extend_from_vocab(label_vocab)
 
     print("Constructing model")
-    model = SemcorRetriever(
+    model = NearestNeighborRetriever(
         vocab=vocab,
         embedder=embedder,
         target_dataset=train_dataset,
@@ -113,7 +92,7 @@ def predict(embedding_name, distance_metric, top_n):
         same_lemma=True,
     ).eval().to(device)
     dummy_reader = OntonotesReader(split='train', token_indexers={'tokens': indexer})
-    predictor = SemcorPredictor(model=model, dataset_reader=dummy_reader)
+    predictor = NearestNeighborPredictor(model=model, dataset_reader=dummy_reader)
 
     os.makedirs(f'cache/ontonotes_{distance_metric}_predictions', exist_ok=True)
     with open(predictions_path, 'wt') as f:
@@ -125,20 +104,20 @@ def predict(embedding_name, distance_metric, top_n):
         header += [f"distance_{i+1}" for i in range(top_n)]
         tsv_writer.writerow(header)
 
-        for instance in tqdm.tqdm([i for i in testdev_dataset if train_label_counts[i['lemma_label'].label] >= 5]):
+        for instance in tqdm.tqdm([i for i in testdev_dataset if train_label_counts[i['label'].label] >= 5]):
             d = predictor.predict_instance(instance)
             sentence = [t.text for t in instance['text'].tokens]
-            span = instance['lemma_span']
+            span = instance['label_span']
             sentence = format_sentence(sentence, span.span_start, span.span_end)
-            label = instance['lemma_label'].label
-            lemma = label[:label.rfind('_')]
-            label_freq_in_train = train_label_counts[instance['lemma_label'].label]
+            label = instance['label'].label
+            lemma = lemma_from_label(label)
+            label_freq_in_train = train_label_counts[instance['label'].label]
 
             row = [sentence, label, lemma, label_freq_in_train]
             results = d[f'top_{top_n}']
             results += [None for _ in range(top_n - len(results))]
             row += [i['label'] if i is not None else "" for i in results]
-            row += [i['label'][:i['label'].rfind('_')] if i is not None else "" for i in results]
+            row += [lemma_from_label(i['label']) if i is not None else "" for i in results]
             row += [i['sentence'] if i is not None else "" for i in results]
             row += [i['distance'] if i is not None else 888888 for i in results]
             if len(row) != 204:
@@ -158,6 +137,7 @@ def pr_at_k(df, label_freqs, lemma_freqs, top_n, pickle_path, min_train_freq, ma
         return defaultdict(f2)
     correct_at_k = defaultdict(f1)
 
+    no_data = True
     for _, row in tqdm.tqdm(df.iterrows()):
         label = row.label
         lemma = row.label[:row.label.rfind('_')]
@@ -166,6 +146,7 @@ def pr_at_k(df, label_freqs, lemma_freqs, top_n, pickle_path, min_train_freq, ma
             continue
         if not (min_train_freq <= row.label_freq_in_train < max_train_freq):
             continue
+        no_data = False
 
         num_labels_correct = 0
         for k in range(1, top_n + 1):
@@ -181,6 +162,10 @@ def pr_at_k(df, label_freqs, lemma_freqs, top_n, pickle_path, min_train_freq, ma
             correct_at_k[k]['total'] += k
             correct_at_k[k]['label_total'] += (label_freqs[label])
             correct_at_k[k]['lemma_total'] += (lemma_freqs[lemma])
+
+    if no_data:
+        print("No instances in this bin, skipping")
+        return None, None
 
 
     ps_at_k = defaultdict(lambda: dict())
@@ -236,7 +221,7 @@ def main(embedding_name, distance_metric, top_n=50):
 
     df = pd.read_csv(f'cache/ontonotes_{distance_metric}_predictions/{embedding_name}.tsv', sep='\t')
     for min_train_freq, max_train_freq in [[5,25], [25,100], [100,200], [200, 500000]]:
-        for min_rarity, max_rarity in [[0,0.05], [0.05,0.15], [0.15,0.25], [0.25,1]]:
+        for min_rarity, max_rarity in [[0, 0.01], [0.01,0.05], [0.05,0.15], [0.15,0.25], [0.25,1]]:
             print(f"Cutoff: [{min_train_freq},{max_train_freq}), Rarity: [{min_rarity},{max_rarity})")
             pr_at_k(df, label_freqs, lemma_freqs, top_n,
                     pickle_path=f'cache/ontonotes_{distance_metric}_predictions/{embedding_name}-{min_train_freq}to{max_train_freq}-{min_rarity}to{max_rarity}.pkl',
