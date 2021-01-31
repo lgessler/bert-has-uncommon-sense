@@ -87,7 +87,7 @@ def read_dataset_cached(reader_cls, data_path, corpus_name, split, embedding_nam
             return pickle.load(f)
 
     print(f"Reading split {split}")
-    dataset = reader.read(data_path)
+    dataset = list(reader.read(data_path))
     os.makedirs('cache/dataset/', exist_ok=True)
     with open(pickle_path, 'wb') as f:
         print(f"Caching {split} in {pickle_path}")

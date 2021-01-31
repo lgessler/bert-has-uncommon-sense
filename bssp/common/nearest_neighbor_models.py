@@ -1,12 +1,12 @@
 import random
 from collections import defaultdict
 from pprint import pprint
-from typing import Dict, Any, List, Union, Literal
+from typing import Dict, Any, List, Union, Literal, Iterator
 
 import torch
 from allennlp.modules.token_embedders import PretrainedTransformerMismatchedEmbedder
 from torch.nn.functional import cosine_similarity, pairwise_distance
-from allennlp.data import Vocabulary, TokenIndexer, Instance, AllennlpDataset
+from allennlp.data import Vocabulary, TokenIndexer, Instance
 from allennlp.models import Model
 from allennlp.modules import TokenEmbedder, TextFieldEmbedder
 from allennlp.predictors import Predictor
@@ -38,7 +38,7 @@ class NearestNeighborRetriever(Model):
     def __init__(self,
                  vocab: Vocabulary,
                  embedder: TextFieldEmbedder,
-                 target_dataset: AllennlpDataset,
+                 target_dataset: Iterator[Instance],
                  device: torch.device,
                  distance_metric: Literal["cosine", "euclidean"],
                  top_n: int,

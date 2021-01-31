@@ -2,7 +2,7 @@
 from typing import Dict, Any, List, Iterable
 
 import torch
-from allennlp.data import Vocabulary, TokenIndexer, Instance, AllennlpDataset, DatasetReader, Token
+from allennlp.data import Vocabulary, TokenIndexer, Instance, DatasetReader, Token
 from allennlp.data.fields import TextField
 from allennlp.models import Model
 from allennlp.modules import TokenEmbedder, TextFieldEmbedder
