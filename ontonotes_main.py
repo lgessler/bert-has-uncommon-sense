@@ -19,7 +19,8 @@ from ldg.pickle import pickle_write
 
 from bssp.common.reading import read_dataset_cached, indexer_for_embedder, embedder_for_embedding
 from bssp.common.util import dataset_stats
-from bssp.common.nearest_neighbor_models import NearestNeighborRetriever, NearestNeighborPredictor, format_sentence
+from bssp.common.nearest_neighbor_models import NearestNeighborRetriever, NearestNeighborPredictor, format_sentence, \
+    RandomRetriever
 from bssp.ontonotes.dataset_reader import OntonotesReader, lemma_from_label
 
 TRAIN_FILEPATH = 'data/conll-formatted-ontonotes-5.0/data/train'
@@ -82,17 +83,27 @@ def predict(embedding_name, distance_metric, top_n):
     vocab.extend_from_vocab(label_vocab)
 
     print("Constructing model")
-    model = NearestNeighborRetriever(
-        vocab=vocab,
-        embedder=embedder,
-        target_dataset=train_dataset,
-        distance_metric=distance_metric,
-        device=device,
-        top_n=top_n,
-        same_lemma=True,
-    ).eval().to(device)
+    if distance_metric == 'baseline':
+        model = RandomRetriever(
+            vocab=vocab,
+            target_dataset=train_dataset,
+            device=device,
+            top_n=top_n,
+            same_lemma=True,
+        ).eval().to(device)
+    else:
+        model = NearestNeighborRetriever(
+            vocab=vocab,
+            embedder=embedder,
+            target_dataset=train_dataset,
+            distance_metric=distance_metric,
+            device=device,
+            top_n=top_n,
+            same_lemma=True,
+        ).eval().to(device)
     dummy_reader = OntonotesReader(split='train', token_indexers={'tokens': indexer})
     predictor = NearestNeighborPredictor(model=model, dataset_reader=dummy_reader)
+
 
     os.makedirs(f'cache/ontonotes_{distance_metric}_predictions', exist_ok=True)
     with open(predictions_path, 'wt') as f:
@@ -129,19 +140,23 @@ def predict(embedding_name, distance_metric, top_n):
     print(f"Wrote predictions to {predictions_path}")
 
 
-def pr_at_k(df, label_freqs, lemma_freqs, top_n, pickle_path, min_train_freq, max_train_freq, min_rarity, max_rarity):
+def metrics_at_k(df, label_freqs, lemma_freqs, top_n, pickle_path, min_train_freq, max_train_freq, min_rarity, max_rarity):
     # for pickles
     def f1():
         def f2():
             return 0
         return defaultdict(f2)
-    correct_at_k = defaultdict(f1)
+    score_dict = defaultdict(f1)
 
     no_data = True
+    # Computation of metrics at k would be more straightforward with k in the outer loop and rows in the inner loop, but
+    # this is very inefficient. Instead, we reverse the loop order.
     for _, row in tqdm.tqdm(df.iterrows()):
         label = row.label
         lemma = row.label[:row.label.rfind('_')]
         rarity = label_freqs[label] / lemma_freqs[lemma]
+
+        # take care that we're in the proper bucket
         if not (min_rarity <= rarity < max_rarity):
             continue
         if not (min_train_freq <= row.label_freq_in_train < max_train_freq):
@@ -149,44 +164,47 @@ def pr_at_k(df, label_freqs, lemma_freqs, top_n, pickle_path, min_train_freq, ma
         no_data = False
 
         num_labels_correct = 0
+        num_lemmas_correct = 0
         for k in range(1, top_n + 1):
+            if num_labels_correct < label_freqs[label]:
+                # Do we have the correct label/lemma?
+                label_is_correct = getattr(row, f'label_{k}') == label
+                lemma_is_correct = getattr(row, f'lemma_{k}') == lemma
+                num_labels_correct += label_is_correct
+                num_lemmas_correct += lemma_is_correct
 
-            label_is_correct = getattr(row, f'label_{k}') == label
-            correct_at_k[k]['label'] += 1 if label_is_correct else 0
-            num_labels_correct += 1 if label_is_correct else 0
-            correct_at_k[k]['lemma'] += (getattr(row, f'lemma_{k}') == lemma)
-            correct_at_k[k]['oracle_label_metric'] += min(label_freqs[label], k)
-            correct_at_k[k]['truncated_label_metric'] += min(label_freqs[label], k)
-            correct_at_k[k]['truncated_lemma_metric'] += min(lemma_freqs[lemma], k)
+                # accumulate the numerator for precision
+                score_dict[k]['label'] += num_labels_correct
+                score_dict[k]['lemma'] += num_lemmas_correct
 
-            correct_at_k[k]['total'] += k
-            correct_at_k[k]['label_total'] += (label_freqs[label])
-            correct_at_k[k]['lemma_total'] += (lemma_freqs[lemma])
+                # accumulate denominators for precision
+                score_dict[k]['total'] += k
+                # ... and recall
+                score_dict[k]['label_total'] += (label_freqs[label])
+                score_dict[k]['lemma_total'] += (lemma_freqs[lemma])
+
+                # oracle recall: simulate recall if every item was gold. this is the numerator
+                score_dict[k]['oracle_label_metric'] += min(k, label_freqs[label])
+            else:
+                break
 
     if no_data:
         print("No instances in this bin, skipping")
         return None, None
 
-
     ps_at_k = defaultdict(lambda: dict())
     for k in range(1, top_n+1):
         for l in ['label', 'lemma']:
-            correct_at_k[k][l] += correct_at_k[k-1][l]
-            ps_at_k[k][l] = correct_at_k[k][l] / correct_at_k[k]['total']
+            ps_at_k[k][l] = score_dict[k][l] / score_dict[k]['total']
 
     recalls_at_k = defaultdict(lambda: dict())
     for k in range(1, top_n+1):
         for l in ['label', 'lemma']:
-            recalls_at_k[k][l] = correct_at_k[k][l] / correct_at_k[k][f'{l}_total']
-
-    truncated_recalls_at_k = defaultdict(lambda: dict())
-    for k in range(1, top_n+1):
-        for l in ['label', 'lemma']:
-            truncated_recalls_at_k[k][l] = correct_at_k[k][l] / correct_at_k[k][f'truncated_{l}_metric']
+            recalls_at_k[k][l] = score_dict[k][l] / score_dict[k][f'{l}_total']
 
     oracle_recalls_at_k = defaultdict(lambda: dict())
     for k in range(1, top_n + 1):
-        oracle_recalls_at_k[k]['label'] = correct_at_k[k][f'oracle_label_metric'] / correct_at_k[k]['label_total']
+        oracle_recalls_at_k[k]['label'] = score_dict[k][f'oracle_label_metric'] / score_dict[k]['label_total']
 
     # write to pickles
     ps_at_k = dict(ps_at_k)
@@ -198,11 +216,6 @@ def pr_at_k(df, label_freqs, lemma_freqs, top_n, pickle_path, min_train_freq, ma
     for key, value in recalls_at_k.items():
         recalls_at_k[key] = dict(value)
     pickle_write(recalls_at_k, pickle_path + '.rec')
-
-    truncated_recalls_at_k = dict(truncated_recalls_at_k)
-    for key, value in truncated_recalls_at_k.items():
-        truncated_recalls_at_k[key] = dict(value)
-    pickle_write(truncated_recalls_at_k, pickle_path + '.trec')
 
     oracle_recalls_at_k = dict(oracle_recalls_at_k)
     for key, value in oracle_recalls_at_k.items():
@@ -223,12 +236,12 @@ def main(embedding_name, distance_metric, top_n=50):
     for min_train_freq, max_train_freq in [[5,25], [25,100], [100,200], [200, 500000]]:
         for min_rarity, max_rarity in [[0, 0.01], [0.01,0.05], [0.05,0.15], [0.15,0.25], [0.25,1]]:
             print(f"Cutoff: [{min_train_freq},{max_train_freq}), Rarity: [{min_rarity},{max_rarity})")
-            pr_at_k(df, label_freqs, lemma_freqs, top_n,
-                    pickle_path=f'cache/ontonotes_{distance_metric}_predictions/{embedding_name}-{min_train_freq}to{max_train_freq}-{min_rarity}to{max_rarity}.pkl',
-                    min_train_freq=min_train_freq,
-                    max_train_freq=max_train_freq,
-                    min_rarity=min_rarity,
-                    max_rarity=max_rarity)
+            metrics_at_k(df, label_freqs, lemma_freqs, top_n,
+                         pickle_path=f'cache/ontonotes_{distance_metric}_predictions/{embedding_name}-{min_train_freq}to{max_train_freq}-{min_rarity}to{max_rarity}.pkl',
+                         min_train_freq=min_train_freq,
+                         max_train_freq=max_train_freq,
+                         min_rarity=min_rarity,
+                         max_rarity=max_rarity)
 
 
 if __name__ == '__main__':
@@ -248,7 +261,8 @@ if __name__ == '__main__':
         help="How to measure distance between two BERT embedding vectors",
         choices=[
             'euclidean',
-            'cosine'
+            'cosine',
+            'baseline'
         ],
         default='cosine'
     )
