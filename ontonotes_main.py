@@ -10,6 +10,7 @@ import argparse
 import csv
 import os
 from collections import Counter, defaultdict
+from random import shuffle
 
 import torch
 import pandas as pd
@@ -18,9 +19,8 @@ from allennlp.data import Vocabulary
 from ldg.pickle import pickle_write
 
 from bssp.common import paths
-from bssp.common.analysis import metrics_at_k
+from bssp.common.analysis import metrics_at_k, dataset_stats
 from bssp.common.reading import read_dataset_cached, indexer_for_embedder, embedder_for_embedding
-from bssp.common.util import dataset_stats
 from bssp.common.nearest_neighbor_models import NearestNeighborRetriever, NearestNeighborPredictor, format_sentence, \
     RandomRetriever
 from bssp.ontonotes.dataset_reader import OntonotesReader, lemma_from_label
@@ -55,6 +55,23 @@ def stats(train_dataset, test_dataset):
     testdev_labels, testdev_lemmas = dataset_stats('testdev', test_dataset, "ontonotes_stats", lemma_from_label)
 
     return train_labels, train_lemmas
+
+
+def batch_queries(instances, query_n):
+    instances_by_label = defaultdict(list)
+    for instance in instances:
+        label = instance['label'].label
+        instances_by_label[label].append(instance)
+
+    batches = []
+    for label, label_instances in instances_by_label.items():
+        shuffle(label_instances)
+        i = 0
+        while i < len(label_instances):
+            batches.append(label_instances[i:i+query_n])
+            i += query_n
+
+    return batches
 
 
 def predict(embedding_name, distance_metric, top_n, query_n):
@@ -106,6 +123,12 @@ def predict(embedding_name, distance_metric, top_n, query_n):
     dummy_reader = OntonotesReader(split='train', token_indexers={'tokens': indexer})
     predictor = NearestNeighborPredictor(model=model, dataset_reader=dummy_reader)
 
+    # remove any super-rare instances that did not occur at least 5 times in train
+    # (these are not interesting to eval on)
+    instances = [i for i in testdev_dataset if train_label_counts[i['label'].label] >= 5]
+    # We are abusing the batch abstraction here--really a batch should be a set of independent instances,
+    # but we are using it here as a convenient way to feed in a single instance.
+    batches = batch_queries(instances, query_n)
 
     with open(predictions_path, 'wt') as f:
         tsv_writer = csv.writer(f, delimiter='\t')
@@ -116,16 +139,19 @@ def predict(embedding_name, distance_metric, top_n, query_n):
         header += [f"distance_{i+1}" for i in range(top_n)]
         tsv_writer.writerow(header)
 
-        for instance in tqdm.tqdm([i for i in testdev_dataset if train_label_counts[i['label'].label] >= 5]):
-            d = predictor.predict_instance(instance)
-            sentence = [t.text for t in instance['text'].tokens]
-            span = instance['label_span']
-            sentence = format_sentence(sentence, span.span_start, span.span_end)
-            label = instance['label'].label
+        for batch in tqdm.tqdm(batches):
+            # the batch results are actually all the same--just take the first one
+            ds = predictor.predict_batch_instance(batch)
+            d = ds[0]
+            sentences = [[t.text for t in i['text'].tokens] for i in batch]
+            spans = [i['label_span'] for i in batch]
+            sentences = [format_sentence(sentence, span.span_start, span.span_end)
+                         for sentence, span in zip(sentences, spans)]
+            label = batch[0]['label'].label
             lemma = lemma_from_label(label)
-            label_freq_in_train = train_label_counts[instance['label'].label]
+            label_freq_in_train = train_label_counts[label]
 
-            row = [sentence, label, lemma, label_freq_in_train]
+            row = [" || ".join(sentences), label, lemma, label_freq_in_train]
             results = d[f'top_{top_n}']
             results += [None for _ in range(top_n - len(results))]
             row += [i['label'] if i is not None else "" for i in results]
@@ -134,7 +160,6 @@ def predict(embedding_name, distance_metric, top_n, query_n):
             row += [i['distance'] if i is not None else 888888 for i in results]
             if len(row) != 204:
                 print(len(row))
-                print(instance)
                 assert False
             tsv_writer.writerow(row)
 

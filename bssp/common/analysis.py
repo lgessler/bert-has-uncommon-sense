@@ -1,6 +1,8 @@
-from collections import defaultdict
+from collections import defaultdict, Counter
 from ldg.pickle import pickle_write
 from tqdm import tqdm
+
+from bssp.common import paths
 
 
 def metrics_at_k(df, label_freqs, lemma_freqs, top_n, path_f, min_train_freq, max_train_freq, min_rarity, max_rarity):
@@ -86,3 +88,22 @@ def metrics_at_k(df, label_freqs, lemma_freqs, top_n, path_f, min_train_freq, ma
     pickle_write(oracle_recalls_at_k, path_f('orec'))
     return recalls_at_k, recalls_at_k
 
+
+def dataset_stats(split, dataset, directory, lemma_function):
+    labels = Counter()
+    lemmas = Counter()
+
+    for instance in dataset:
+        label = instance['label'].label
+        lemma = lemma_function(label)
+        labels[label] += 1
+        lemmas[lemma] += 1
+
+    with open(paths.freq_tsv_path(directory, split, 'label'), 'w', encoding='utf-8') as f:
+        for item, freq in sorted(labels.items(), key=lambda x:-x[1]):
+            f.write(f"{item}\t{freq}\n")
+    with open(paths.freq_tsv_path(directory, split, 'lemma'), 'w', encoding='utf-8') as f:
+        for item, freq in sorted(lemmas.items(), key=lambda x:-x[1]):
+            f.write(f"{item}\t{freq}\n")
+
+    return labels, lemmas

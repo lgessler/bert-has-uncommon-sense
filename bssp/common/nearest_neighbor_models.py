@@ -68,22 +68,21 @@ class NearestNeighborRetriever(Model):
     def forward(self,
                 text: Dict[str, Dict[str, torch.Tensor]],
                 label_span: torch.Tensor,
-                label: torch.Tensor = None) -> Dict[str, torch.Tensor]:
+                label: torch.Tensor = None) -> Dict[str, Any]:
         # note the lemma of the query
-        query_label_string = self.vocab.get_token_from_index(label.item(), namespace='labels')
+        query_label_string = self.vocab.get_token_from_index(label[0].item(), namespace='labels')
         query_lemma_string = query_label_string[:query_label_string.find('_')]
 
         # get the sentence embedding
         # contextualized and uncontextualized embedders need separate handling
         embedded_text = self.embedder(text)
 
-        # get information about the query
-        if embedded_text.shape[0] > 1:
-            raise NotImplemented("Use single-item batches")
-        span_start = label_span[0][0].item()
-        span_end = label_span[0][1].item()
-        if span_end - span_start > 1:
-            raise NotImplemented("Only single-word spans are currently supported")
+        # validation
+        for i in range(len(label_span)):
+            span_start = label_span[i][0].item()
+            span_end = label_span[i][1].item()
+            if span_end - span_start > 1:
+                raise NotImplemented("Only single-word spans are currently supported")
 
         # if same_lemma is set to true, enforce the constraint that the lemma (but not necessarily
         # the sense of the lemma) be the same for both the word in the query and the word we're
@@ -96,9 +95,16 @@ class NearestNeighborRetriever(Model):
             target_embeddings = self.target_dataset_embeddings
             target_instances = self.target_dataset
 
-        # compute similarities and rank them
-        query_embedding = embedded_text[0][span_start]
+        # Get the query embedding: in the general case, we have n words in context, and we take their average pool
+        target_word_embeddings = [
+            embedded_text[i][label_span[i][0].item()]
+            for i in range(len(label_span))
+        ]
+        target_word_embeddings = torch.stack(target_word_embeddings, 0)
+        query_embedding = torch.mean(target_word_embeddings, 0)
         query_embedding = query_embedding.reshape((1, -1))
+
+        # compute similarities and rank them
         distances = self.distance_function(target_embeddings, query_embedding)
         ranked_indices = torch.argsort(distances, descending=False)
 
@@ -119,8 +125,8 @@ class NearestNeighborRetriever(Model):
                 'distance': distances[index].item()
             }
             top_n_results.append(result_dict)
-        # wrap in another list because we have a batch size of 1
-        result = {f'top_{self.top_n}': [top_n_results]}
+        # cooperate with allennlp by pretending we have batch results
+        result = {f'top_{self.top_n}': [top_n_results] * len(label_span)}
         return result
 
 

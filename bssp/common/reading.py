@@ -9,7 +9,6 @@ from allennlp.data import Vocabulary
 from allennlp.data.token_indexers import PretrainedTransformerMismatchedIndexer, SingleIdTokenIndexer
 from allennlp.modules.token_embedders import PretrainedTransformerMismatchedEmbedder, Embedding
 from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
-from allennlp.data.tokenizers import Token
 from transformers import BertTokenizer
 
 from bssp.common import paths
