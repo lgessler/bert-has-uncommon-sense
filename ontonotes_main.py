@@ -17,6 +17,8 @@ import tqdm
 from allennlp.data import Vocabulary
 from ldg.pickle import pickle_write
 
+from bssp.common import paths
+from bssp.common.analysis import metrics_at_k
 from bssp.common.reading import read_dataset_cached, indexer_for_embedder, embedder_for_embedding
 from bssp.common.util import dataset_stats
 from bssp.common.nearest_neighbor_models import NearestNeighborRetriever, NearestNeighborPredictor, format_sentence, \
@@ -55,8 +57,8 @@ def stats(train_dataset, test_dataset):
     return train_labels, train_lemmas
 
 
-def predict(embedding_name, distance_metric, top_n):
-    predictions_path = f'cache/ontonotes_{distance_metric}_predictions/{embedding_name.replace("embeddings/", "")}.tsv'
+def predict(embedding_name, distance_metric, top_n, query_n):
+    predictions_path = paths.predictions_tsv_path(distance_metric, embedding_name, query_n)
     if os.path.isfile(predictions_path):
         print(f"Reading predictions from {predictions_path}")
         return
@@ -105,7 +107,6 @@ def predict(embedding_name, distance_metric, top_n):
     predictor = NearestNeighborPredictor(model=model, dataset_reader=dummy_reader)
 
 
-    os.makedirs(f'cache/ontonotes_{distance_metric}_predictions', exist_ok=True)
     with open(predictions_path, 'wt') as f:
         tsv_writer = csv.writer(f, delimiter='\t')
         header = ['sentence', 'label', 'lemma', 'label_freq_in_train']
@@ -140,108 +141,35 @@ def predict(embedding_name, distance_metric, top_n):
     print(f"Wrote predictions to {predictions_path}")
 
 
-def metrics_at_k(df, label_freqs, lemma_freqs, top_n, pickle_path, min_train_freq, max_train_freq, min_rarity, max_rarity):
-    # for pickles
-    def f1():
-        def f2():
-            return 0
-        return defaultdict(f2)
-    score_dict = defaultdict(f1)
-
-    no_data = True
-    # Computation of metrics at k would be more straightforward with k in the outer loop and rows in the inner loop, but
-    # this is very inefficient. Instead, we reverse the loop order.
-    for _, row in tqdm.tqdm(df.iterrows()):
-        label = row.label
-        lemma = row.label[:row.label.rfind('_')]
-        rarity = label_freqs[label] / lemma_freqs[lemma]
-
-        # take care that we're in the proper bucket
-        if not (min_rarity <= rarity < max_rarity):
-            continue
-        if not (min_train_freq <= row.label_freq_in_train < max_train_freq):
-            continue
-        no_data = False
-
-        num_labels_correct = 0
-        num_lemmas_correct = 0
-        for k in range(1, top_n + 1):
-            if num_labels_correct < label_freqs[label]:
-                # Do we have the correct label/lemma?
-                label_is_correct = getattr(row, f'label_{k}') == label
-                lemma_is_correct = getattr(row, f'lemma_{k}') == lemma
-                num_labels_correct += label_is_correct
-                num_lemmas_correct += lemma_is_correct
-
-                # accumulate the numerator for precision
-                score_dict[k]['label'] += num_labels_correct
-                score_dict[k]['lemma'] += num_lemmas_correct
-
-                # accumulate denominators for precision
-                score_dict[k]['total'] += k
-                # ... and recall
-                score_dict[k]['label_total'] += (label_freqs[label])
-                score_dict[k]['lemma_total'] += (lemma_freqs[lemma])
-
-                # oracle recall: simulate recall if every item was gold. this is the numerator
-                score_dict[k]['oracle_label_metric'] += min(k, label_freqs[label])
-            else:
-                break
-
-    if no_data:
-        print("No instances in this bin, skipping")
-        return None, None
-
-    ps_at_k = defaultdict(lambda: dict())
-    for k in range(1, top_n+1):
-        for l in ['label', 'lemma']:
-            ps_at_k[k][l] = score_dict[k][l] / score_dict[k]['total']
-
-    recalls_at_k = defaultdict(lambda: dict())
-    for k in range(1, top_n+1):
-        for l in ['label', 'lemma']:
-            recalls_at_k[k][l] = score_dict[k][l] / score_dict[k][f'{l}_total']
-
-    oracle_recalls_at_k = defaultdict(lambda: dict())
-    for k in range(1, top_n + 1):
-        oracle_recalls_at_k[k]['label'] = score_dict[k][f'oracle_label_metric'] / score_dict[k]['label_total']
-
-    # write to pickles
-    ps_at_k = dict(ps_at_k)
-    for key, value in ps_at_k.items():
-        ps_at_k[key] = dict(value)
-    pickle_write(ps_at_k, pickle_path + '.prec')
-
-    recalls_at_k = dict(recalls_at_k)
-    for key, value in recalls_at_k.items():
-        recalls_at_k[key] = dict(value)
-    pickle_write(recalls_at_k, pickle_path + '.rec')
-
-    oracle_recalls_at_k = dict(oracle_recalls_at_k)
-    for key, value in oracle_recalls_at_k.items():
-        oracle_recalls_at_k[key] = dict(value)
-    pickle_write(oracle_recalls_at_k, pickle_path + '.orec')
-    return recalls_at_k, recalls_at_k
-
-
-def main(embedding_name, distance_metric, top_n=50):
-    predict(embedding_name, distance_metric, top_n)
+def main(embedding_name, distance_metric, top_n=50, query_n=1):
+    predict(embedding_name, distance_metric, top_n, query_n)
 
     with open('cache/ontonotes_stats/train_label_freq.tsv', 'r') as f:
         label_freqs = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
     with open('cache/ontonotes_stats/train_lemma_freq.tsv', 'r') as f:
         lemma_freqs = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
 
-    df = pd.read_csv(f'cache/ontonotes_{distance_metric}_predictions/{embedding_name}.tsv', sep='\t')
+    df = pd.read_csv(paths.predictions_tsv_path(distance_metric, embedding_name, query_n), sep='\t')
     for min_train_freq, max_train_freq in [[5,25], [25,100], [100,200], [200, 500000]]:
-        for min_rarity, max_rarity in [[0, 0.01], [0.01,0.05], [0.05,0.15], [0.15,0.25], [0.25,1]]:
+        for min_rarity, max_rarity in [[0, 0.01], [0.01,0.05], [0.05,0.15], [0.15,0.25], [0.25,0.5], [0.5,1]]:
             print(f"Cutoff: [{min_train_freq},{max_train_freq}), Rarity: [{min_rarity},{max_rarity})")
-            metrics_at_k(df, label_freqs, lemma_freqs, top_n,
-                         pickle_path=f'cache/ontonotes_{distance_metric}_predictions/{embedding_name}-{min_train_freq}to{max_train_freq}-{min_rarity}to{max_rarity}.pkl',
-                         min_train_freq=min_train_freq,
-                         max_train_freq=max_train_freq,
-                         min_rarity=min_rarity,
-                         max_rarity=max_rarity)
+            metrics_at_k(
+                df, label_freqs, lemma_freqs, top_n,
+                path_f=lambda ext: paths.bucketed_metric_at_k_path(
+                    distance_metric,
+                    query_n,
+                    embedding_name,
+                    min_train_freq,
+                    max_train_freq,
+                    min_rarity,
+                    max_rarity,
+                    ext=ext
+                ),
+                min_train_freq=min_train_freq,
+                max_train_freq=max_train_freq,
+                min_rarity=min_rarity,
+                max_rarity=max_rarity
+            )
 
 
 if __name__ == '__main__':
@@ -271,11 +199,19 @@ if __name__ == '__main__':
         type=int,
         default=50
     )
+    ap.add_argument(
+        '--query-n',
+        type=int,
+        default=1,
+        help="Number of sentences to draw from when formulating a query. "
+             "For n>1, embeddings of the target word will be average pooled."
+    )
     args = ap.parse_args()
     print(args)
 
     main(
         args.embedding,
         args.metric,
-        top_n=args.top_n
+        top_n=args.top_n,
+        query_n=args.query_n
     )
