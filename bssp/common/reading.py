@@ -11,6 +11,8 @@ from allennlp.modules.token_embedders import PretrainedTransformerMismatchedEmbe
 from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
 from allennlp.data.tokenizers import Token
 from transformers import BertTokenizer
+
+from bssp.common import paths
 from bssp.common.embedder_model import EmbedderModel, EmbedderDatasetReader, EmbedderModelPredictor
 
 
@@ -79,8 +81,7 @@ def read_dataset_cached(reader_cls, data_path, corpus_name, split, embedding_nam
         embedding_predictor=embedding_predictor
     )
 
-    pickle_name = corpus_name + "_" + split + ('__' + embedding_name).replace('cache/embeddings/', '')
-    pickle_path = 'cache/dataset/' + pickle_name + '.pkl'
+    pickle_path = paths.dataset_path(corpus_name, embedding_name, split)
     if os.path.isfile(pickle_path):
         print(f"Reading split {split} from cache at {pickle_path}")
         with open(pickle_path, 'rb') as f:
@@ -88,7 +89,6 @@ def read_dataset_cached(reader_cls, data_path, corpus_name, split, embedding_nam
 
     print(f"Reading split {split}")
     dataset = list(reader.read(data_path))
-    os.makedirs('cache/dataset/', exist_ok=True)
     with open(pickle_path, 'wb') as f:
         print(f"Caching {split} in {pickle_path}")
         pickle.dump(dataset, f)
