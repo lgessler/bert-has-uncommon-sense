@@ -57,7 +57,7 @@ def stats(train_dataset, test_dataset):
     return train_labels, train_lemmas
 
 
-def batch_queries(instances, query_n):
+def batch_queries(instances, query_n, full_batches_only=True):
     instances_by_label = defaultdict(list)
     for instance in instances:
         label = instance['label'].label
@@ -68,6 +68,8 @@ def batch_queries(instances, query_n):
         shuffle(label_instances)
         i = 0
         while i < len(label_instances):
+            if full_batches_only and i+query_n > len(label_instances):
+                break
             batches.append(label_instances[i:i+query_n])
             i += query_n
 
