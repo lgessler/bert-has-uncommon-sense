@@ -13,6 +13,11 @@ def freq_tsv_path(directory, split, token_type):
     return f'cache/{directory}/{split}_{token_type}_freq.tsv'
 
 
+def freq_tsv_path2(distance_metric, query_n, split, token_type):
+    directory = f'ontonotes_{distance_metric}_q{query_n}_predictions'
+    return freq_tsv_path(directory, split, token_type)
+
+
 def model_dir(distance_metric, query_n):
     return f'cache/ontonotes_{distance_metric}_q{query_n}_predictions/'
 

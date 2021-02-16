@@ -20,6 +20,7 @@ from ldg.pickle import pickle_write
 
 from bssp.common import paths
 from bssp.common.analysis import metrics_at_k, dataset_stats
+from bssp.common.const import TRAIN_FREQ_BUCKETS, PREVALENCE_BUCKETS
 from bssp.common.reading import read_dataset_cached, indexer_for_embedder, embedder_for_embedding
 from bssp.common.nearest_neighbor_models import NearestNeighborRetriever, NearestNeighborPredictor, format_sentence, \
     RandomRetriever
@@ -177,8 +178,8 @@ def main(embedding_name, distance_metric, top_n=50, query_n=1):
         lemma_freqs = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
 
     df = pd.read_csv(paths.predictions_tsv_path(distance_metric, embedding_name, query_n), sep='\t')
-    for min_train_freq, max_train_freq in [[5,25], [25,100], [100,200], [200, 500000]]:
-        for min_rarity, max_rarity in [[0, 0.01], [0.01,0.05], [0.05,0.15], [0.15,0.25], [0.25,0.5], [0.5,1]]:
+    for min_train_freq, max_train_freq in TRAIN_FREQ_BUCKETS:
+        for min_rarity, max_rarity in PREVALENCE_BUCKETS:
             print(f"Cutoff: [{min_train_freq},{max_train_freq}), Rarity: [{min_rarity},{max_rarity})")
             metrics_at_k(
                 df, label_freqs, lemma_freqs, top_n,

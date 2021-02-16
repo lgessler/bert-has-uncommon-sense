@@ -11,7 +11,6 @@ from allennlp.models import Model
 from allennlp.modules import TokenEmbedder, TextFieldEmbedder
 from allennlp.predictors import Predictor
 from allennlp.common.util import logger, JsonDict
-from tqdm import tqdm
 
 
 def format_sentence(sentence, i, j):
