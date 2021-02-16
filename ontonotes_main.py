@@ -192,7 +192,7 @@ def main(embedding_name, distance_metric, top_n=50, query_n=1, bert_layers=None)
     with open('cache/ontonotes_stats/train_lemma_freq.tsv', 'r') as f:
         lemma_freqs = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
 
-    df = pd.read_csv(paths.predictions_tsv_path(distance_metric, embedding_name, query_n), sep='\t')
+    df = pd.read_csv(paths.predictions_tsv_path(distance_metric, embedding_name, query_n, bert_layers=bert_layers), sep='\t')
     for min_train_freq, max_train_freq in TRAIN_FREQ_BUCKETS:
         for min_rarity, max_rarity in PREVALENCE_BUCKETS:
             print(f"Cutoff: [{min_train_freq},{max_train_freq}), Rarity: [{min_rarity},{max_rarity})")
