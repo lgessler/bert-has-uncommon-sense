@@ -26,7 +26,7 @@ def predictions_tsv_path(distance_metric, embedding_name, query_n, bert_layers=N
     mdir = model_dir(distance_metric, query_n)
     os.makedirs(mdir, exist_ok=True)
     return mdir + (f'{embedding_name.replace("embeddings/", "")}'
-                   f'{("_" + ",".join(bert_layers)) if bert_layers else ""}'
+                   f'{("_" + ",".join(map(str, bert_layers))) if bert_layers else ""}'
                    f'.tsv')
 
 
@@ -43,7 +43,7 @@ def bucketed_metric_at_k_path(
 ):
     mdir = model_dir(distance_metric, query_n)
     return mdir + (f'{embedding_name}'
-                   f'_{("_" + ",".join(bert_layers)) if bert_layers else ""}'
+                   f'{("_" + ",".join(map(str, bert_layers))) if bert_layers else ""}'
                    f'_{min_train_freq}-{max_train_freq}'
                    f'_{min_rarity}-{max_rarity}'
                    f'.{ext}')
