@@ -31,28 +31,25 @@ def metrics_at_k(df, label_freqs, lemma_freqs, top_n, path_f, min_train_freq, ma
         num_labels_correct = 0
         num_lemmas_correct = 0
         for k in range(1, top_n + 1):
-            if num_labels_correct < label_freqs[label]:
-                # Do we have the correct label/lemma?
-                label_is_correct = getattr(row, f'label_{k}') == label
-                lemma_is_correct = getattr(row, f'lemma_{k}') == lemma
-                num_labels_correct += label_is_correct
-                num_lemmas_correct += lemma_is_correct
+            # Do we have the correct label/lemma?
+            label_is_correct = getattr(row, f'label_{k}') == label
+            lemma_is_correct = getattr(row, f'lemma_{k}') == lemma
+            num_labels_correct += label_is_correct
+            num_lemmas_correct += lemma_is_correct
 
-                # accumulate the numerator for precision
-                score_dict[k]['label'] += num_labels_correct
-                score_dict[k]['lemma'] += num_lemmas_correct
+            # accumulate the numerator for precision
+            score_dict[k]['label'] += num_labels_correct
+            score_dict[k]['lemma'] += num_lemmas_correct
 
-                # accumulate denominators for precision
-                score_dict[k]['total'] += k
-                # ... and recall
-                score_dict[k]['label_total'] += (label_freqs[label])
-                score_dict[k]['lemma_total'] += (lemma_freqs[lemma])
+            # accumulate denominators for precision
+            score_dict[k]['total'] += k
+            # ... and recall
+            score_dict[k]['label_total'] += (label_freqs[label])
+            score_dict[k]['lemma_total'] += (lemma_freqs[lemma])
 
-                # oracle recall and precision: simulate if every item was gold. this is the numerator
-                score_dict[k]['oracle_recall'] += min(k, label_freqs[label])
-                score_dict[k]['oracle_precision'] += min(k, label_freqs[label])
-            else:
-                break
+            # oracle recall and precision: simulate if every item was gold. this is the numerator
+            score_dict[k]['oracle_recall'] += min(k, label_freqs[label])
+            score_dict[k]['oracle_precision'] += min(k, label_freqs[label])
 
     if no_data:
         print("No instances in this bin, skipping")
