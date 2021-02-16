@@ -31,7 +31,8 @@ def embedder_for_embedding(embedding_name):
         tokenizer = BertTokenizer.from_pretrained(embedding_name)
         for word in tokenizer.vocab.keys():
             vocab.add_token_to_namespace(word, "tokens")
-        token_embedders = {"tokens": PretrainedTransformerMismatchedEmbedder(model_name=embedding_name)}
+        token_embedders = {"tokens": PretrainedTransformerMismatchedEmbedder(model_name=embedding_name,
+                                                                             last_layer_only=False)}
     else:
         with open(embedding_name, 'r', encoding='utf-8') as f:
             count = 0

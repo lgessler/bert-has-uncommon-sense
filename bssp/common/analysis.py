@@ -48,8 +48,9 @@ def metrics_at_k(df, label_freqs, lemma_freqs, top_n, path_f, min_train_freq, ma
                 score_dict[k]['label_total'] += (label_freqs[label])
                 score_dict[k]['lemma_total'] += (lemma_freqs[lemma])
 
-                # oracle recall: simulate recall if every item was gold. this is the numerator
-                score_dict[k]['oracle_label_metric'] += min(k, label_freqs[label])
+                # oracle recall and precision: simulate if every item was gold. this is the numerator
+                score_dict[k]['oracle_recall'] += min(k, label_freqs[label])
+                score_dict[k]['oracle_precision'] += min(k, label_freqs[label])
             else:
                 break
 
@@ -69,7 +70,11 @@ def metrics_at_k(df, label_freqs, lemma_freqs, top_n, path_f, min_train_freq, ma
 
     oracle_recalls_at_k = defaultdict(lambda: dict())
     for k in range(1, top_n + 1):
-        oracle_recalls_at_k[k]['label'] = score_dict[k][f'oracle_label_metric'] / score_dict[k]['label_total']
+        oracle_recalls_at_k[k]['label'] = score_dict[k][f'oracle_recall'] / score_dict[k]['label_total']
+
+    oracle_precisions_at_k = defaultdict(lambda: dict())
+    for k in range(1, top_n + 1):
+        oracle_precisions_at_k[k]['label'] = score_dict[k][f'oracle_precision'] / score_dict[k]['total']
 
     # write to pickles
     ps_at_k = dict(ps_at_k)
@@ -86,6 +91,11 @@ def metrics_at_k(df, label_freqs, lemma_freqs, top_n, path_f, min_train_freq, ma
     for key, value in oracle_recalls_at_k.items():
         oracle_recalls_at_k[key] = dict(value)
     pickle_write(oracle_recalls_at_k, path_f('orec'))
+
+    oracle_precisions_at_k = dict(oracle_precisions_at_k)
+    for key, value in oracle_precisions_at_k.items():
+        oracle_precisions_at_k[key] = dict(value)
+    pickle_write(oracle_precisions_at_k, path_f('oprec'))
     return recalls_at_k, recalls_at_k
 
 

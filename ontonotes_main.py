@@ -77,8 +77,21 @@ def batch_queries(instances, query_n, full_batches_only=True):
     return batches
 
 
-def predict(embedding_name, distance_metric, top_n, query_n):
-    predictions_path = paths.predictions_tsv_path(distance_metric, embedding_name, query_n)
+def activate_bert_layers(embedder, layers):
+    """
+    The Embedder has params deep inside that produce a scalar mix of BERT layers via a softmax
+    followed by a dot product. Activate the ones specified in `layers` and deactivate the rest
+    """
+    # whew!
+    scalar_mix = embedder.token_embedder_tokens._matched_embedder._scalar_mix.scalar_parameters
+
+    for i, param in enumerate(scalar_mix):
+        param.requires_grad = False
+        param.fill_(1 if i in layers else 1e-9)
+
+
+def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
+    predictions_path = paths.predictions_tsv_path(distance_metric, embedding_name, query_n, bert_layers=bert_layers)
     if os.path.isfile(predictions_path):
         print(f"Reading predictions from {predictions_path}")
         return
@@ -90,6 +103,8 @@ def predict(embedding_name, distance_metric, top_n, query_n):
 
     indexer = indexer_for_embedder(embedding_name)
     vocab, embedder = embedder_for_embedding(embedding_name)
+    if bert_layers is not None:
+        activate_bert_layers(embedder, bert_layers)
 
     # we're using a `transformers` model
     label_vocab = Vocabulary.from_instances(train_dataset)
@@ -169,8 +184,8 @@ def predict(embedding_name, distance_metric, top_n, query_n):
     print(f"Wrote predictions to {predictions_path}")
 
 
-def main(embedding_name, distance_metric, top_n=50, query_n=1):
-    predict(embedding_name, distance_metric, top_n, query_n)
+def main(embedding_name, distance_metric, top_n=50, query_n=1, bert_layers=None):
+    predict(embedding_name, distance_metric, top_n, query_n, bert_layers)
 
     with open('cache/ontonotes_stats/train_label_freq.tsv', 'r') as f:
         label_freqs = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
@@ -191,7 +206,8 @@ def main(embedding_name, distance_metric, top_n=50, query_n=1):
                     max_train_freq,
                     min_rarity,
                     max_rarity,
-                    ext=ext
+                    ext=ext,
+                    bert_layers=bert_layers
                 ),
                 min_train_freq=min_train_freq,
                 max_train_freq=max_train_freq,
@@ -234,12 +250,23 @@ if __name__ == '__main__':
         help="Number of sentences to draw from when formulating a query. "
              "For n>1, embeddings of the target word will be average pooled."
     )
+    ap.add_argument(
+        '--bert-layers',
+        help="Comma-delimited list of bert layers (0-indexed) to average. "
+             "For bert-base models, these range between 0 and 11."
+    )
     args = ap.parse_args()
     print(args)
-
+    bert_layers = None
+    if args.bert_layers:
+        bert_layers = [int(i) for i in args.bert_layers.split(",")]
+    else:
+        if 'bert' in args.embedding:
+            raise Exception('Specify --bert-layers (e.g., `--bert-layers 1,2,3`)')
     main(
         args.embedding,
         args.metric,
         top_n=args.top_n,
-        query_n=args.query_n
+        query_n=args.query_n,
+        bert_layers=bert_layers
     )
