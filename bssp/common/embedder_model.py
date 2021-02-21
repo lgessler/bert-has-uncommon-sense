@@ -6,6 +6,7 @@ from allennlp.data import Vocabulary, TokenIndexer, Instance, DatasetReader, Tok
 from allennlp.data.fields import TextField
 from allennlp.models import Model
 from allennlp.modules import TokenEmbedder, TextFieldEmbedder
+from allennlp.nn.util import get_token_ids_from_text_field_tensors
 from allennlp.predictors import Predictor
 from allennlp.common.util import logger, JsonDict
 
@@ -18,6 +19,7 @@ class EmbedderModel(Model):
     def forward(self, text: Dict[str, Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
         embedded_text = self.embedder(text)
         return {
+            "token_ids": get_token_ids_from_text_field_tensors(text),
             "embeddings": embedded_text
         }
 
