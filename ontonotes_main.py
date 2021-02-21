@@ -85,9 +85,12 @@ def activate_bert_layers(embedder, layers):
     # whew!
     scalar_mix = embedder.token_embedder_tokens._matched_embedder._scalar_mix.scalar_parameters
 
-    for i, param in enumerate(scalar_mix):
-        param.requires_grad = False
-        param.fill_(1 if i in layers else 1e-9)
+    with torch.no_grad():
+        for i, param in enumerate(scalar_mix):
+            param.requires_grad = False
+            # These parameters will be softmaxed, so get the layer(s) we want close to +inf,
+            # and the layers we don't want close to -inf
+            param.fill_(1e9 if i in layers else -1e9)
 
 
 def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
