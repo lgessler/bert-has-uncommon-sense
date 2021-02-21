@@ -148,7 +148,7 @@ def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
     # but we are using it here as a convenient way to feed in a single instance.
     batches = batch_queries(instances, query_n)
 
-    with open(predictions_path, 'wt') as f:
+    with open(predictions_path, 'wt') as f, torch.no_grad():
         tsv_writer = csv.writer(f, delimiter='\t')
         header = ['sentence', 'label', 'lemma', 'label_freq_in_train']
         header += [f"label_{i+1}" for i in range(top_n)]
@@ -253,7 +253,8 @@ if __name__ == '__main__':
     ap.add_argument(
         '--bert-layers',
         help="Comma-delimited list of bert layers (0-indexed) to average. "
-             "For bert-base models, these range between 0 and 11."
+             "For bert-base models, these range between 0 and 11.",
+        default=None
     )
     args = ap.parse_args()
     print(args)
@@ -261,7 +262,7 @@ if __name__ == '__main__':
     if args.bert_layers:
         bert_layers = [int(i) for i in args.bert_layers.split(",")]
     else:
-        if 'bert' in args.embedding:
+        if 'bert' in args.embedding and args.metric != 'baseline':
             raise Exception('Specify --bert-layers (e.g., `--bert-layers 1,2,3`)')
     main(
         args.embedding,
