@@ -42,6 +42,7 @@ class NearestNeighborRetriever(Model):
                  top_n: int,
                  same_lemma: bool = False):
         super().__init__(vocab)
+        print(vocab)
         self.embedder = embedder
         self.target_dataset = target_dataset
         self.device = device
@@ -54,7 +55,6 @@ class NearestNeighborRetriever(Model):
         self.target_dataset_embeddings = torch.stack(
             tuple(torch.tensor(inst['span_embeddings'].array[0]) for inst in target_dataset)
         ).to(device)
-
         # build index from lemma to all instances that have it
         self.lemma_index = defaultdict(list)
         for i, instance in enumerate(target_dataset):
@@ -67,7 +67,8 @@ class NearestNeighborRetriever(Model):
     def forward(self,
                 text: Dict[str, Dict[str, torch.Tensor]],
                 label_span: torch.Tensor,
-                label: torch.Tensor = None) -> Dict[str, Any]:
+                label: torch.Tensor,
+                lemma: torch.Tensor) -> Dict[str, Any]:
         # note the lemma of the query
         query_label_string = self.vocab.get_token_from_index(label[0].item(), namespace='labels')
         query_lemma_string = query_label_string[:query_label_string.find('_')]
@@ -83,17 +84,6 @@ class NearestNeighborRetriever(Model):
             if span_end - span_start > 1:
                 raise NotImplemented("Only single-word spans are currently supported")
 
-        # if same_lemma is set to true, enforce the constraint that the lemma (but not necessarily
-        # the sense of the lemma) be the same for both the word in the query and the word we're
-        # looking at in the results
-        if self.same_lemma:
-            lemma_indexes = self.lemma_index[query_lemma_string]
-            target_embeddings = self.target_dataset_embeddings[lemma_indexes]
-            target_instances = [self.target_dataset[index] for index in lemma_indexes]
-        else:
-            target_embeddings = self.target_dataset_embeddings
-            target_instances = self.target_dataset
-
         # Get the query embedding: in the general case, we have n words in context, and we take their average pool
         target_word_embeddings = [
             embedded_text[i][label_span[i][0].item()]
@@ -102,6 +92,24 @@ class NearestNeighborRetriever(Model):
         target_word_embeddings = torch.stack(target_word_embeddings, 0)
         query_embedding = torch.mean(target_word_embeddings, 0)
         query_embedding = query_embedding.reshape((1, -1))
+
+        # if same_lemma is set to true, enforce the constraint that the lemma (but not necessarily
+        # the sense of the lemma) be the same for both the word in the query and the word we're
+        # looking at in the results
+        target_instances_idx = {}
+        target_embeddings = self.target_dataset_embeddings
+        if self.same_lemma:
+            lemma_indexes = self.lemma_index[query_lemma_string]
+            target_embeddings = target_embeddings[lemma_indexes]
+            i = 0
+            for _ in target_embeddings:
+                target_instances_idx[i] = lemma_indexes[i]
+                i += 1
+        else:
+            i = 0
+            for _ in self.target_dataset:
+                target_instances_idx[i] = i
+                i += 1
 
         # compute similarities and rank them
         distances = self.distance_function(target_embeddings, query_embedding)
@@ -113,7 +121,8 @@ class NearestNeighborRetriever(Model):
             if len(top_n_results) >= self.top_n:
                 break
 
-            instance = target_instances[index]
+            orig_index = target_instances_idx[index.item()]
+            instance = self.target_dataset[orig_index]
             span = instance['label_span']
             instance_label = str(instance['label'].label)
 
