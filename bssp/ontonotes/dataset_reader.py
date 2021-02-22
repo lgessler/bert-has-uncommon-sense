@@ -5,6 +5,7 @@ from allennlp.data import DatasetReader, Instance, TokenIndexer, Token
 from allennlp.data.fields import ArrayField, LabelField, SpanField, TextField
 from allennlp_models.common.ontonotes import Ontonotes, OntonotesSentence
 import numpy as np
+from tqdm import tqdm
 
 from bssp.common.embedder_model import EmbedderModelPredictor
 
@@ -54,7 +55,7 @@ class OntonotesReader(DatasetReader):
 
     def _read(self, file_path: str) -> Iterable[Instance]:
         reader = Ontonotes()
-        for doc_path in Ontonotes.dataset_path_iterator(file_path):
+        for doc_path in tqdm(Ontonotes.dataset_path_iterator(file_path)):
             for doc in reader.dataset_document_iterator(doc_path):
                 for sent in doc:
                     if all(sense is None for sense in sent.word_senses):
@@ -72,15 +73,13 @@ class OntonotesReader(DatasetReader):
                             print(sent.predicate_lemmas)
                             print(len(sent.words), len(sent.word_senses), len(sent.predicate_lemmas))
 
-                        for word, sense, lemma, pos_tag, i in zip(sent.words,
-                                                                  sent.word_senses,
-                                                                  sent.predicate_lemmas,
-                                                                  sent.pos_tags,
-                                                                  range(len(sent.words))):
+                        for i, sense in enumerate(sent.word_senses):
                             if sense is not None:
+                                lemma = sent.predicate_lemmas[i]
+                                pos_tag = sent.pos_tags[i]
                                 simplified_pos = "n" if pos_tag.startswith("N") else "v" if pos_tag.startswith("V") else None
-                                if simplified_pos is None:
-                                    raise Exception(f"POS tag not for noun or verb: {pos_tag}")
+                                #if simplified_pos is None:
+                                #    raise Exception(f"POS tag not for noun or verb: {pos_tag}")
                                 instance = self.text_to_instance(
                                     tokens, i, i, f"{lemma}_{simplified_pos}_{sense}", embeddings=embeddings
                                 )

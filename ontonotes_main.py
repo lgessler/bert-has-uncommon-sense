@@ -23,8 +23,7 @@ from bssp.common import paths
 from bssp.common.analysis import metrics_at_k, dataset_stats
 from bssp.common.const import TRAIN_FREQ_BUCKETS, PREVALENCE_BUCKETS
 from bssp.common.reading import read_dataset_cached, make_indexer, make_embedder, activate_bert_layers
-from bssp.common.nearest_neighbor_models import NearestNeighborRetriever, NearestNeighborPredictor, format_sentence, \
-    RandomRetriever
+from bssp.common.nearest_neighbor_models import NearestNeighborRetriever, NearestNeighborPredictor, RandomRetriever
 from bssp.ontonotes.dataset_reader import OntonotesReader, lemma_from_label
 
 TRAIN_FILEPATH = 'data/conll-formatted-ontonotes-5.0/data/train'
@@ -81,6 +80,18 @@ def batch_queries(instances, query_n, full_batches_only=True):
             i += query_n
 
     return batches
+
+
+SENTENCE_CACHE = {}
+
+
+def format_sentence(sentence, i, j):
+    key = (tuple(sentence), i, j)
+    if key in SENTENCE_CACHE:
+        return SENTENCE_CACHE[key]
+    formatted = " ".join(sentence[:i] + ['>>' + sentence[i] + '<<'] + sentence[j+1:])
+    SENTENCE_CACHE[key] = formatted
+    return formatted
 
 
 def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
@@ -147,7 +158,7 @@ def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
         header += [f"distance_{i+1}" for i in range(top_n)]
         tsv_writer.writerow(header)
 
-        for batch_no, batch in tqdm.tqdm(enumerate(batches)):
+        for batch in tqdm.tqdm(batches):
             # the batch results are actually all the same--just take the first one
             ds = predictor.predict_batch_instance(batch)
             d = ds[0]
@@ -162,10 +173,34 @@ def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
             row = [" || ".join(sentences), label, lemma, label_freq_in_train]
             results = d[f'top_{top_n}']
             results += [None for _ in range(top_n - len(results))]
-            row += [i['label'] if i is not None else "" for i in results]
-            row += [lemma_from_label(i['label']) if i is not None else "" for i in results]
-            row += [i['sentence'] if i is not None else "" for i in results]
-            row += [i['distance'] if i is not None else 888888 for i in results]
+
+            labels = []
+            lemmas = []
+            sentences = []
+            distances = []
+
+            for result in results:
+                if result is None:
+                    distances.append(88888888)
+                    labels.append("")
+                    lemmas.append("")
+                    sentences.append("")
+                else:
+                    index, distance = result
+                    distances.append(distance)
+                    instance = train_dataset[index]
+                    labels.append(instance['label'].label)
+                    lemmas.append(lemma_from_label(labels[-1]))
+                    span = instance['label_span']
+                    sentences.append(
+                        format_sentence([t.text for t in instance['text'].tokens],
+                                        span.span_start, span.span_end)
+                    )
+
+            row += labels
+            row += lemmas
+            row += sentences
+            row += distances
             if len(row) != 204:
                 print(len(row))
                 assert False

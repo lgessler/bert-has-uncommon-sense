@@ -110,7 +110,7 @@ def read_dataset_cached(reader_cls, data_path, corpus_name, split, embedding_nam
             return pickle.load(f)
 
     print(f"Reading split {split}")
-    dataset = list(reader.read(data_path))
+    dataset = sorted(list(reader.read(data_path)), key=lambda x: x['label'].label)
     with open(pickle_path, 'wb') as f:
         print(f"Caching {split} in {pickle_path}")
         pickle.dump(dataset, f)

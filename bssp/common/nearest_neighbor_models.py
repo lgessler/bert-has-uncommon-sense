@@ -13,9 +13,6 @@ from allennlp.predictors import Predictor
 from allennlp.common.util import logger, JsonDict
 
 
-def format_sentence(sentence, i, j):
-    return " ".join(sentence[:i] + ['>>' + sentence[i] + '<<'] + sentence[j+1:])
-
 
 def is_bert(embedder: TextFieldEmbedder):
     return isinstance(embedder._token_embedders['tokens'], PretrainedTransformerMismatchedEmbedder)
@@ -96,45 +93,29 @@ class NearestNeighborRetriever(Model):
         # if same_lemma is set to true, enforce the constraint that the lemma (but not necessarily
         # the sense of the lemma) be the same for both the word in the query and the word we're
         # looking at in the results
-        target_instances_idx = {}
         target_embeddings = self.target_dataset_embeddings
         if self.same_lemma:
             lemma_indexes = self.lemma_index[query_lemma_string]
             target_embeddings = target_embeddings[lemma_indexes]
-            i = 0
-            for _ in target_embeddings:
-                target_instances_idx[i] = lemma_indexes[i]
-                i += 1
-        else:
-            i = 0
-            for _ in self.target_dataset:
-                target_instances_idx[i] = i
-                i += 1
 
         # compute similarities and rank them
         distances = self.distance_function(target_embeddings, query_embedding)
         ranked_indices = torch.argsort(distances, descending=False)
 
         # return top n
-        top_n_results = []
-        for index in ranked_indices:
-            if len(top_n_results) >= self.top_n:
-                break
-
-            orig_index = target_instances_idx[index.item()]
-            instance = self.target_dataset[orig_index]
-            span = instance['label_span']
-            instance_label = str(instance['label'].label)
-
-            result_dict = {
-                'sentence': format_sentence([t.text for t in instance['text'].tokens],
-                                            span.span_start, span.span_end),
-                'label': instance_label,
-                'distance': distances[index].item()
-            }
-            top_n_results.append(result_dict)
+        top_indices = ranked_indices[:50].to('cpu')
+        top_distances = distances[top_indices].to('cpu')
+        # need to map back to dataset indices if we were lemma-restricted
+        if self.same_lemma:
+            top_indices.apply_(lambda i: lemma_indexes[i])
+        top_n_results = list(zip(
+            top_indices,
+            top_distances
+        ))
         # cooperate with allennlp by pretending we have batch results
-        result = {f'top_{self.top_n}': [top_n_results] * len(label_span)}
+        result = {
+            f'top_{self.top_n}': [top_n_results] * len(label_span)
+        }
         return result
 
 
@@ -212,27 +193,21 @@ class RandomRetriever(Model):
         # the sense of the lemma) be the same for both the word in the query and the word we're
         # looking at in the results
         if self.same_lemma:
-            lemma_indexes = self.lemma_index[query_lemma_string]
-            target_instances = [self.target_dataset[index] for index in lemma_indexes]
+            indexes = self.lemma_index[query_lemma_string]
         else:
-            target_instances = self.target_dataset
+            indexes = torch.tensor(range(self.target_dataset_embeddings.shape[0])).to(self.device)
 
         # compute similarities and rank them
-        random.shuffle(target_instances)
+        random.shuffle(indexes)
 
         # return top n
         top_n_results = []
-        for instance in target_instances:
+        for index in indexes:
             if len(top_n_results) >= self.top_n:
                 break
 
-            span = instance['label_span']
-            instance_label = str(instance['label'].label)
-
             result_dict = {
-                'sentence': format_sentence([t.text for t in instance['text'].tokens],
-                                            span.span_start, span.span_end),
-                'label': instance_label,
+                'index': index,
                 'distance': None
             }
             top_n_results.append(result_dict)
