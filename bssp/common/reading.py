@@ -15,7 +15,7 @@ from bssp.common import paths
 from bssp.common.embedder_model import EmbedderModel, EmbedderDatasetReader, EmbedderModelPredictor
 
 
-def indexer_for_embedder(embedding_name):
+def make_indexer(embedding_name):
     """Get a token indexer that's appropriate for the embedding type"""
     if embedding_name.startswith('bert-'):
         return PretrainedTransformerMismatchedIndexer(embedding_name, namespace="tokens")
@@ -23,7 +23,23 @@ def indexer_for_embedder(embedding_name):
         return SingleIdTokenIndexer(namespace="tokens")
 
 
-def embedder_for_embedding(embedding_name):
+def activate_bert_layers(embedder, bert_layers):
+    """
+    The Embedder has params deep inside that produce a scalar mix of BERT layers via a softmax
+    followed by a dot product. Activate the ones specified in `layers` and deactivate the rest
+    """
+    # whew!
+    scalar_mix = embedder.token_embedder_tokens._matched_embedder._scalar_mix.scalar_parameters
+
+    with torch.no_grad():
+        for i, param in enumerate(scalar_mix):
+            param.requires_grad = False
+            # These parameters will be softmaxed, so get the layer(s) we want close to +inf,
+            # and the layers we don't want close to -inf
+            param.fill_(1e9 if i in bert_layers else -1e9)
+
+
+def make_embedder(embedding_name, bert_layers=None):
     """Given the name of an embedding, return its Vocabulary and a BasicTextFieldEmbedder on its tokens.
     (A BasicTextFieldEmbbeder can be called on a tensor with token indexes to produce embeddings.)"""
     vocab = Vocabulary()
@@ -48,18 +64,24 @@ def embedder_for_embedding(embedding_name):
             )
         }
 
-    return vocab, BasicTextFieldEmbedder(token_embedders)
+    embedder = BasicTextFieldEmbedder(token_embedders)
+    if embedding_name.startswith('bert-'):
+        activate_bert_layers(embedder, bert_layers)
+
+    return vocab, embedder
 
 
-def predictor_for_train_reader(embedding_name):
+def make_predictor_for_train_reader(embedding_name, bert_layers=None):
     """
     When we are reading data from a train split, we want to store the embedding of the target word
     with the instance. This method returns a predictor that will simply allow us to predict embeddings.
     """
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    indexer = indexer_for_embedder(embedding_name)
-    vocab, embedder = embedder_for_embedding(embedding_name)
+    indexer = make_indexer(embedding_name)
+    vocab, embedder = make_embedder(embedding_name, bert_layers=bert_layers)
+    if bert_layers is not None:
+        activate_bert_layers(embedder, bert_layers)
     model = EmbedderModel(vocab=vocab, embedder=embedder).to(device).eval()
     predictor = EmbedderModelPredictor(
         model=model,
@@ -68,20 +90,20 @@ def predictor_for_train_reader(embedding_name):
     return predictor
 
 
-def read_dataset_cached(reader_cls, data_path, corpus_name, split, embedding_name, with_embeddings=False):
+def read_dataset_cached(reader_cls, data_path, corpus_name, split, embedding_name, bert_layers=None, with_embeddings=False):
     if with_embeddings:
-        embedding_predictor = predictor_for_train_reader(embedding_name)
+        embedding_predictor = make_predictor_for_train_reader(embedding_name, bert_layers=bert_layers)
     else:
         embedding_predictor = None
 
-    indexer = indexer_for_embedder(embedding_name)
+    indexer = make_indexer(embedding_name)
     reader = reader_cls(
         split=split,
         token_indexers={'tokens': indexer},
         embedding_predictor=embedding_predictor
     )
 
-    pickle_path = paths.dataset_path(corpus_name, embedding_name, split)
+    pickle_path = paths.dataset_path(corpus_name, embedding_name, split, bert_layers=bert_layers)
     if os.path.isfile(pickle_path):
         print(f"Reading split {split} from cache at {pickle_path}")
         with open(pickle_path, 'rb') as f:

@@ -32,14 +32,20 @@ class OntonotesReader(DatasetReader):
                          span_end: int,
                          label: str,
                          embeddings: np.ndarray = None) -> Instance:
-        Tokens = [Token(t) for t in tokens]
-        text_field = TextField(Tokens, self.token_indexers)
+        tokens = [Token(t) for t in tokens]
+        # The text of the sentence in which the word sense appears
+        text_field = TextField(tokens, self.token_indexers)
+        # The word sense-annotated span, always of length 1 in ontonotes
         lemma_span_field = SpanField(span_start, span_end, text_field)
+        # a label like "make_v_1.0"
         label_field = LabelField(label)
+        # like above but without the sense number
+        lemma_field = LabelField(lemma_from_label(label), label_namespace='lemma_labels')
         fields = {
             'text': text_field,
             'label_span': lemma_span_field,
-            'label': label_field
+            'label': label_field,
+            'lemma': lemma_field
         }
         if self.embedding_predictor:
             fields['span_embeddings'] = ArrayField(embeddings[span_start:span_end + 1, :])

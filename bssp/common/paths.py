@@ -1,9 +1,12 @@
 import os
 
 
-def dataset_path(corpus_name, embedding_name, split):
+def dataset_path(corpus_name, embedding_name, split, bert_layers=None):
     os.makedirs('cache/dataset/', exist_ok=True)
-    pickle_name = corpus_name + "_" + split + ('__' + embedding_name).replace('cache/embeddings/', '')
+    pickle_name = corpus_name
+    if bert_layers is not None:
+        pickle_name += '_' + ",".join(str(l) for l in bert_layers)
+    pickle_name += "_" + split + ('__' + embedding_name).replace('cache/embeddings/', '')
     pickle_path = 'cache/dataset/' + pickle_name + '.pkl'
     return pickle_path
 

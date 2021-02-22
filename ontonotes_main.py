@@ -17,11 +17,12 @@ import pandas as pd
 import tqdm
 from allennlp.data import Vocabulary
 from ldg.pickle import pickle_write
+from torch.autograd import profiler
 
 from bssp.common import paths
 from bssp.common.analysis import metrics_at_k, dataset_stats
 from bssp.common.const import TRAIN_FREQ_BUCKETS, PREVALENCE_BUCKETS
-from bssp.common.reading import read_dataset_cached, indexer_for_embedder, embedder_for_embedding
+from bssp.common.reading import read_dataset_cached, make_indexer, make_embedder, activate_bert_layers
 from bssp.common.nearest_neighbor_models import NearestNeighborRetriever, NearestNeighborPredictor, format_sentence, \
     RandomRetriever
 from bssp.ontonotes.dataset_reader import OntonotesReader, lemma_from_label
@@ -30,23 +31,28 @@ TRAIN_FILEPATH = 'data/conll-formatted-ontonotes-5.0/data/train'
 DEVELOPMENT_FILEPATH = 'data/conll-formatted-ontonotes-5.0/data/development'
 TEST_FILEPATH = 'data/conll-formatted-ontonotes-5.0/data/test'
 
-# TODO: look into whether senses are from ontonotes or propbank
-# - query instances to find instances that have a lemma with a certain number of senses and with a certain number of lemmas
-# - Lemma restriction so we don't get distracted by other words
-# - Bucket by lemma frequency and then use MAP etc to examine rarity
-# TODO: refer to email and figure out how words were chosen for sense annotation
+
+def read_nota_senses():
+    nota_filepath = 'data/ontonotes_nota_senses.txt'
+    if not os.path.isfile(nota_filepath):
+        raise Exception("Populate `data/ontonotes_nota_senses.txt` by running `notebooks/senses.ipynb`")
+    with open(nota_filepath, 'r') as f:
+        return [s for s in f.read().split('\n') if s.strip()]
 
 
-def read_datasets(embedding_name):
+NOTA_SENSES = read_nota_senses()
+
+
+def read_datasets(embedding_name, bert_layers):
     train_dataset = read_dataset_cached(
-        OntonotesReader, TRAIN_FILEPATH, 'ontonotes', 'train', embedding_name, with_embeddings=True
+        OntonotesReader, TRAIN_FILEPATH, 'ontonotes', 'train', embedding_name, bert_layers=bert_layers, with_embeddings=True
     )
     print(train_dataset[0])
     dev_dataset = read_dataset_cached(
-        OntonotesReader, DEVELOPMENT_FILEPATH, 'ontonotes', 'dev', embedding_name, with_embeddings=False
+        OntonotesReader, DEVELOPMENT_FILEPATH, 'ontonotes', 'dev', embedding_name, bert_layers=bert_layers, with_embeddings=False
     )
     test_dataset = read_dataset_cached(
-        OntonotesReader, TEST_FILEPATH, 'ontonotes', 'test', embedding_name, with_embeddings=False
+        OntonotesReader, TEST_FILEPATH, 'ontonotes', 'test', embedding_name, bert_layers=bert_layers, with_embeddings=False
     )
     return train_dataset, dev_dataset + test_dataset
 
@@ -77,22 +83,6 @@ def batch_queries(instances, query_n, full_batches_only=True):
     return batches
 
 
-def activate_bert_layers(embedder, layers):
-    """
-    The Embedder has params deep inside that produce a scalar mix of BERT layers via a softmax
-    followed by a dot product. Activate the ones specified in `layers` and deactivate the rest
-    """
-    # whew!
-    scalar_mix = embedder.token_embedder_tokens._matched_embedder._scalar_mix.scalar_parameters
-
-    with torch.no_grad():
-        for i, param in enumerate(scalar_mix):
-            param.requires_grad = False
-            # These parameters will be softmaxed, so get the layer(s) we want close to +inf,
-            # and the layers we don't want close to -inf
-            param.fill_(1e9 if i in layers else -1e9)
-
-
 def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
     predictions_path = paths.predictions_tsv_path(distance_metric, embedding_name, query_n, bert_layers=bert_layers)
     if os.path.isfile(predictions_path):
@@ -101,13 +91,11 @@ def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    train_dataset, testdev_dataset = read_datasets(embedding_name)
+    train_dataset, testdev_dataset = read_datasets(embedding_name, bert_layers)
     train_label_counts, train_lemma_counts = stats(train_dataset, testdev_dataset)
 
-    indexer = indexer_for_embedder(embedding_name)
-    vocab, embedder = embedder_for_embedding(embedding_name)
-    if bert_layers is not None:
-        activate_bert_layers(embedder, bert_layers)
+    indexer = make_indexer(embedding_name)
+    vocab, embedder = make_embedder(embedding_name, bert_layers)
 
     # we're using a `transformers` model
     label_vocab = Vocabulary.from_instances(train_dataset)
@@ -150,7 +138,6 @@ def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
     # We are abusing the batch abstraction here--really a batch should be a set of independent instances,
     # but we are using it here as a convenient way to feed in a single instance.
     batches = batch_queries(instances, query_n)
-
     with open(predictions_path, 'wt') as f, torch.no_grad():
         tsv_writer = csv.writer(f, delimiter='\t')
         header = ['sentence', 'label', 'lemma', 'label_freq_in_train']
@@ -160,7 +147,7 @@ def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
         header += [f"distance_{i+1}" for i in range(top_n)]
         tsv_writer.writerow(header)
 
-        for batch in tqdm.tqdm(batches):
+        for batch_no, batch in tqdm.tqdm(enumerate(batches)):
             # the batch results are actually all the same--just take the first one
             ds = predictor.predict_batch_instance(batch)
             d = ds[0]
@@ -260,13 +247,13 @@ if __name__ == '__main__':
         default=None
     )
     args = ap.parse_args()
-    print(args)
     bert_layers = None
     if args.bert_layers:
         bert_layers = [int(i) for i in args.bert_layers.split(",")]
     else:
         if 'bert' in args.embedding and args.metric != 'baseline':
             raise Exception('Specify --bert-layers (e.g., `--bert-layers 1,2,3`)')
+
     main(
         args.embedding,
         args.metric,
