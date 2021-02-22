@@ -6,7 +6,7 @@ from collections import Counter
 import tqdm
 import torch
 from allennlp.data import Vocabulary
-from bssp.common.reading import read_dataset_cached, indexer_for_embedder, embedder_for_embedding
+from bssp.common.reading import read_dataset_cached, make_indexer, make_embedder
 from bssp.common.nearest_neighbor_models import NearestNeighborRetriever, NearestNeighborPredictor, format_sentence
 from bssp.semcor.dataset_reader import SemcorReader, synset_from_label, lemma_from_label
 
@@ -63,8 +63,8 @@ def main(embedding_name, distance_metric, train_filepath, test_filepath, top_n=5
     trlabc, trsymc, trlemc = stats(train_filepath, train_dataset, test_filepath, test_dataset)
 
     print("Constructing vocabulary")
-    indexer = indexer_for_embedder(embedding_name)
-    vocab, embedder = embedder_for_embedding(embedding_name)
+    indexer = make_indexer(embedding_name)
+    vocab, embedder = make_embedder(embedding_name)
 
     # we're using a `transformers` model
     label_vocab = Vocabulary.from_instances(train_dataset)
