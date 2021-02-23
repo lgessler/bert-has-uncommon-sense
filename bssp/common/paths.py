@@ -42,11 +42,15 @@ def bucketed_metric_at_k_path(
         min_rarity,
         max_rarity,
         ext,
+        query_category,
+        pos,
         bert_layers=None
 ):
     mdir = model_dir(distance_metric, query_n)
     return mdir + (f'{embedding_name}'
                    f'{("_" + ",".join(map(str, bert_layers))) if bert_layers else ""}'
+                   f'_{pos}'
+                   f'_{query_category}'
                    f'_{min_train_freq}-{max_train_freq}'
                    f'_{min_rarity}-{max_rarity}'
                    f'.{ext}')

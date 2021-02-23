@@ -31,16 +31,6 @@ DEVELOPMENT_FILEPATH = 'data/conll-formatted-ontonotes-5.0/data/development'
 TEST_FILEPATH = 'data/conll-formatted-ontonotes-5.0/data/test'
 
 
-def read_nota_senses():
-    nota_filepath = 'data/ontonotes_nota_senses.txt'
-    if not os.path.isfile(nota_filepath):
-        raise Exception("Populate `data/ontonotes_nota_senses.txt` by running `notebooks/senses.ipynb`")
-    with open(nota_filepath, 'r') as f:
-        return [s for s in f.read().split('\n') if s.strip()]
-
-
-NOTA_SENSES = read_nota_senses()
-
 
 def read_datasets(embedding_name, bert_layers):
     train_dataset = read_dataset_cached(
@@ -209,7 +199,7 @@ def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
     print(f"Wrote predictions to {predictions_path}")
 
 
-def main(embedding_name, distance_metric, top_n=50, query_n=1, bert_layers=None):
+def main(embedding_name, distance_metric, pos='all', query_category='all', top_n=50, query_n=1, bert_layers=None):
     predict(embedding_name, distance_metric, top_n, query_n, bert_layers)
 
     with open('cache/ontonotes_stats/train_label_freq.tsv', 'r') as f:
@@ -222,7 +212,7 @@ def main(embedding_name, distance_metric, top_n=50, query_n=1, bert_layers=None)
         for min_rarity, max_rarity in PREVALENCE_BUCKETS:
             print(f"Cutoff: [{min_train_freq},{max_train_freq}), Rarity: [{min_rarity},{max_rarity})")
             metrics_at_k(
-                df, label_freqs, lemma_freqs, top_n,
+                df, label_freqs, lemma_freqs, top_n, query_category, pos,
                 path_f=lambda ext: paths.bucketed_metric_at_k_path(
                     distance_metric,
                     query_n,
@@ -231,13 +221,15 @@ def main(embedding_name, distance_metric, top_n=50, query_n=1, bert_layers=None)
                     max_train_freq,
                     min_rarity,
                     max_rarity,
-                    ext=ext,
+                    ext,
+                    query_category,
+                    pos,
                     bert_layers=bert_layers
                 ),
                 min_train_freq=min_train_freq,
                 max_train_freq=max_train_freq,
                 min_rarity=min_rarity,
-                max_rarity=max_rarity
+                max_rarity=max_rarity,
             )
 
 
@@ -281,6 +273,22 @@ if __name__ == '__main__':
              "For bert-base models, these range between 0 and 11.",
         default=None
     )
+    ap.add_argument(
+        '--query-category',
+        choices=['non-nota', 'nota', 'all'],
+        help="Some word senses are negatively defined 'none of the above' senses. These are presumably "
+             "less coherent than normal word senses which are positively defined. `non-nota` will use "
+             "only the latter senses in queries, `nota` will use only the former senses in queries, and "
+             "`all` will use both kinds of senses in queries. In any case, possible results will include "
+             "both NOTA and non-NOTA queries.",
+        default='all'
+    )
+    ap.add_argument(
+        '--pos',
+        choices=['n','v','all'],
+        help="Whether to query on nouns, verbs, or both",
+        default='all'
+    )
     args = ap.parse_args()
     bert_layers = None
     if args.bert_layers:
@@ -292,6 +300,8 @@ if __name__ == '__main__':
     main(
         args.embedding,
         args.metric,
+        query_category=args.query_category,
+        pos=args.pos,
         top_n=args.top_n,
         query_n=args.query_n,
         bert_layers=bert_layers
