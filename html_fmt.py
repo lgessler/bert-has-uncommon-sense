@@ -56,14 +56,13 @@ INSTANCE_TEMPLATE = """
 <div class="ui container" style="padding-top: 3em;">
 <p><strong>Sentence:</strong> {sentence}</p>
 <p><strong>Label:</strong> {label}</p>
-<p><strong>Rarity:</strong> {rarity}</p>
+<p><strong>Prevalence:</strong> {rarity}</p>
 <p><strong>Results:</strong></p>
 <table class="ui celled padded table">
 <thead>
 <tr>
 <th>Number</th>
 <th>Label</th>
-<th>Synset</th>
 <th>Lemma</th>
 <th>Distance</th>
 <th>Sentence</th>
@@ -82,7 +81,6 @@ INSTANCE_TEMPLATE = """
 INSTANCE_LINE_TEMPLATE = """<tr>
 <td>{number}</td>
 <td>{label}</td>
-<td>{synset}</td>
 <td>{lemma}</td>
 <td>{distance}</td>
 <td>{sentence}</td>
@@ -100,10 +98,9 @@ def generate_instance_page(number, base_dir, tsv_name, row):
         body += INSTANCE_LINE_TEMPLATE.format(
             number=i,
             label=format_result('label')(getattr(row, f'label_{i}')),
-            synset=format_result('synset')(getattr(row, f'synset_{i}')),
             lemma=format_result('lemma')(getattr(row, f'lemma_{i}')),
             distance=str(getattr(row, f'distance_{i}'))[:6],
-            sentence=enh_sent(escape(getattr(row, f'sentence_{i}'))),
+            sentence=enh_sent(escape(str(getattr(row, f'sentence_{i}')))),
         )
 
     html_str = INSTANCE_TEMPLATE.format(
@@ -154,11 +151,11 @@ def main(tsv_filepath):
             f.write(HTML_MAIN_TEMPLATE.format(body=rarity2body[int(rarity_threshold * 100)]))
 
 if __name__ == '__main__':
-    with open('synset_freqs.tsv', 'r') as f:
-        SYNSET_FREQS = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
-    with open('lemma_freqs.tsv', 'r') as f:
+    #with open('cache/ontonotes_stats/synset_freqs.tsv', 'r') as f:
+    #    SYNSET_FREQS = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
+    with open('cache/ontonotes_stats/train_lemma_freq.tsv', 'r') as f:
         LEMMA_FREQS = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
-    with open('label_freqs.tsv', 'r') as f:
+    with open('cache/ontonotes_stats/train_label_freq.tsv', 'r') as f:
         LABEL_FREQS = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
     ap = argparse.ArgumentParser()
     ap.add_argument(
