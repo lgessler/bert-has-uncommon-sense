@@ -16,17 +16,17 @@ def freq_tsv_path(directory, split, token_type):
     return f'cache/{directory}/{split}_{token_type}_freq.tsv'
 
 
-def freq_tsv_path2(distance_metric, query_n, split, token_type):
-    directory = f'ontonotes_{distance_metric}_q{query_n}_predictions'
+def freq_tsv_path2(corpus, distance_metric, query_n, split, token_type):
+    directory = f'{corpus}_{distance_metric}_q{query_n}_predictions'
     return freq_tsv_path(directory, split, token_type)
 
 
-def model_dir(distance_metric, query_n):
-    return f'cache/ontonotes_{distance_metric}_q{query_n}_predictions/'
+def model_dir(corpus, distance_metric, query_n):
+    return f'cache/{corpus}_{distance_metric}_q{query_n}_predictions/'
 
 
-def predictions_tsv_path(distance_metric, embedding_name, query_n, bert_layers=None):
-    mdir = model_dir(distance_metric, query_n)
+def predictions_tsv_path(corpus, distance_metric, embedding_name, query_n, bert_layers=None):
+    mdir = model_dir(corpus, distance_metric, query_n)
     os.makedirs(mdir, exist_ok=True)
     return mdir + (f'{embedding_name.replace("embeddings/", "")}'
                    f'{("_" + ",".join(map(str, bert_layers))) if bert_layers else ""}'
@@ -34,6 +34,7 @@ def predictions_tsv_path(distance_metric, embedding_name, query_n, bert_layers=N
 
 
 def bucketed_metric_at_k_path(
+        corpus,
         distance_metric,
         query_n,
         embedding_name,
@@ -42,15 +43,15 @@ def bucketed_metric_at_k_path(
         min_rarity,
         max_rarity,
         ext,
-        query_category,
-        pos,
+        query_category=None,
+        pos=None,
         bert_layers=None
 ):
-    mdir = model_dir(distance_metric, query_n)
+    mdir = model_dir(corpus, distance_metric, query_n)
     return mdir + (f'{embedding_name}'
                    f'{("_" + ",".join(map(str, bert_layers))) if bert_layers else ""}'
-                   f'_{pos}'
-                   f'_{query_category}'
+                   + (f'_{pos}' if pos else "")
+                   + (f'_{query_category}' if query_category else "") +
                    f'_{min_train_freq}-{max_train_freq}'
                    f'_{min_rarity}-{max_rarity}'
                    f'.{ext}')

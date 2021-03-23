@@ -176,7 +176,8 @@ class RandomRetriever(Model):
     def forward(self,
                 text: Dict[str, Dict[str, torch.Tensor]],
                 label_span: torch.Tensor,
-                label: torch.Tensor = None) -> Dict[str, torch.Tensor]:
+                label: torch.Tensor = None,
+                lemma: torch.Tensor = None) -> Dict[str, torch.Tensor]:
         # note the lemma of the query
         query_label_string = self.vocab.get_token_from_index(label.item(), namespace='labels')
         query_lemma_string = query_label_string[:query_label_string.find('_')]
@@ -206,10 +207,7 @@ class RandomRetriever(Model):
             if len(top_n_results) >= self.top_n:
                 break
 
-            result_dict = {
-                'index': index,
-                'distance': None
-            }
+            result_dict = [index, None]
             top_n_results.append(result_dict)
         # wrap in another list because we have a batch size of 1
         result = {f'top_{self.top_n}': [top_n_results]}

@@ -6,8 +6,8 @@ from bssp.common import paths
 from bssp.common.const import NOTA_SENSES
 
 
-def metrics_at_k(df, label_freqs, lemma_freqs, top_n, query_category, pos, path_f,
-                 min_train_freq, max_train_freq, min_rarity, max_rarity):
+def metrics_at_k(df, label_freqs, lemma_freqs, top_n, path_f,
+                 min_train_freq, max_train_freq, min_rarity, max_rarity, query_category=None, pos=None):
     # for pickles
     def f1():
         def f2():
@@ -23,10 +23,10 @@ def metrics_at_k(df, label_freqs, lemma_freqs, top_n, query_category, pos, path_
         lemma = row.label[:row.label.rfind('_')]
         rarity = label_freqs[label] / lemma_freqs[lemma]
 
-        if (query_category == 'non-nota' and label in NOTA_SENSES
+        if query_category and (query_category == 'non-nota' and label in NOTA_SENSES
                 or query_category == 'nota' and label not in NOTA_SENSES):
             continue
-        if (pos == 'n' and '_n_' not in label) or (pos == 'v' and '_v_' not in label):
+        if pos and (pos == 'n' and '_n_' not in label) or (pos == 'v' and '_v_' not in label):
             continue
 
         # take care that we're in the proper bucket
