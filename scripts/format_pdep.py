@@ -38,6 +38,7 @@ WHITELIST = [
     'except',
     'for',
     'from',
+    'in',
     'including',
     'inside',
     'into',
