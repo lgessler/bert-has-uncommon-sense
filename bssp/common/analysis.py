@@ -15,7 +15,8 @@ def metrics_at_k(df, label_freqs, lemma_freqs, top_n, path_f,
         return defaultdict(f2)
     score_dict = defaultdict(f1)
 
-    no_data = True
+    count = 0
+    lemmas = set()
     # Computation of metrics at k would be more straightforward with k in the outer loop and rows in the inner loop, but
     # this is very inefficient. Instead, we reverse the loop order.
     for _, row in tqdm(df.iterrows()):
@@ -34,11 +35,14 @@ def metrics_at_k(df, label_freqs, lemma_freqs, top_n, path_f,
             continue
         if not (min_train_freq <= row.label_freq_in_train < max_train_freq):
             continue
-        no_data = False
+
+        count += 1
+        lemmas.add(lemma)
 
         num_labels_correct = 0
         num_lemmas_correct = 0
         for k in range(1, top_n + 1):
+
             # Do we have the correct label/lemma?
             label_is_correct = getattr(row, f'label_{k}') == label
             lemma_is_correct = getattr(row, f'lemma_{k}') == lemma
@@ -59,7 +63,7 @@ def metrics_at_k(df, label_freqs, lemma_freqs, top_n, path_f,
             score_dict[k]['oracle_recall'] += min(k, label_freqs[label])
             score_dict[k]['oracle_precision'] += min(k, label_freqs[label])
 
-    if no_data:
+    if count == 0:
         print("No instances in this bin, skipping")
         return None, None
 
@@ -101,6 +105,10 @@ def metrics_at_k(df, label_freqs, lemma_freqs, top_n, path_f,
     for key, value in oracle_precisions_at_k.items():
         oracle_precisions_at_k[key] = dict(value)
     pickle_write(oracle_precisions_at_k, path_f('oprec'))
+
+    pickle_write(lemmas, path_f('lemmas'))
+    pickle_write(count, path_f('count'))
+
     return recalls_at_k, recalls_at_k
 
 

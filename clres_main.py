@@ -1,6 +1,6 @@
 """
 This file will:
-- Read the train, test, dev splits of cpa (see TRAIN_FILEPATH, etc. below) into allennlp datasets
+- Read the train, test, dev splits of clres (see TRAIN_FILEPATH, etc. below) into allennlp datasets
 - Get BERT embeddings for words with word senses annotations in the train split
 - Use a model to predict embeddings from the dev+test splits and use a similarity function to find similar instances in train
 - Write the top 50 results for each instance in dev+test to a tsv with information
@@ -9,73 +9,46 @@ This file will:
 import argparse
 import csv
 import os
-from collections import defaultdict
 from glob import glob
-from random import shuffle
 
 import torch
 import pandas as pd
 import tqdm
-from allennlp.common.logging import logger
 from allennlp.data import Vocabulary
 
 from bssp.common import paths
 from bssp.common.analysis import metrics_at_k, dataset_stats
 from bssp.common.const import TRAIN_FREQ_BUCKETS, PREVALENCE_BUCKETS
-from bssp.common.reading import read_dataset_cached, make_indexer, make_embedder, activate_bert_layers
+from bssp.common.reading import read_dataset_cached, make_indexer, make_embedder
 from bssp.common.nearest_neighbor_models import NearestNeighborRetriever, NearestNeighborPredictor, RandomRetriever
 from bssp.common.util import batch_queries, format_sentence
-from bssp.cpa.dataset_reader import CpaReader, lemma_from_label
+from bssp.clres.dataset_reader import lemma_from_label, ClresConlluReader
 
-TRAIN_FILEPATH = 'data/tpp/SemEval/Train/Source'
-TEST_FILEPATH = 'data/tpp/SemEval/Test/Source'
-TEST_ANSWERS_FILEPATH = 'data/tpp/SemEval/Test/Key'
-
-
-def read_key():
-    answers = {}
-    for file_path in sorted(glob(TEST_ANSWERS_FILEPATH + os.sep + "*.key")):
-        with open(file_path, 'r') as f:
-            lines = f.read().strip().split("\n")
-        for line in lines:
-            pieces = line.split(" ")
-            while len(pieces) > 5:
-                print(file_path, line)
-                pieces[2] += " " + pieces.pop(3)
-            lemma, inst_id, sense_id, _, sense_label = pieces
-            answers[inst_id] = {
-                'sense_id': sense_id,
-                'sense_label': sense_label
-            }
-    return answers
+TRAIN_FILEPATH = 'data/pdep/pdep_train.conllu'
+TEST_FILEPATH = 'data/pdep/pdep_test.conllu'
 
 
 def read_datasets(embedding_name, bert_layers):
     train_dataset = read_dataset_cached(
-        CpaReader, TRAIN_FILEPATH, 'cpa', 'train', embedding_name, bert_layers=bert_layers, with_embeddings=True
+        ClresConlluReader, TRAIN_FILEPATH, 'clres', 'train', embedding_name, bert_layers=bert_layers, with_embeddings=True
     )
     print(train_dataset[0])
 
-    # gold labels are stored separately
-    answers = read_key()
-
-    def f(*args, **kwargs):
-        return CpaReader(answers=answers, *args, **kwargs)
     test_dataset = read_dataset_cached(
-        f, TEST_FILEPATH, 'cpa', 'test', embedding_name, bert_layers=bert_layers, with_embeddings=False
+        ClresConlluReader, TEST_FILEPATH, 'clres', 'test', embedding_name, bert_layers=bert_layers, with_embeddings=False
     )
     return train_dataset, test_dataset
 
 
 def stats(train_dataset, test_dataset):
-    train_labels, train_lemmas = dataset_stats('train', train_dataset, "cpa_stats", lemma_from_label)
-    test_labels, test_lemmas = dataset_stats('test', test_dataset, "cpa_stats", lemma_from_label)
+    train_labels, train_lemmas = dataset_stats('train', train_dataset, "clres_stats", lemma_from_label)
+    test_labels, test_lemmas = dataset_stats('test', test_dataset, "clres_stats", lemma_from_label)
 
     return train_labels, train_lemmas
 
 
 def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
-    predictions_path = paths.predictions_tsv_path('cpa', distance_metric, embedding_name, query_n, bert_layers=bert_layers)
+    predictions_path = paths.predictions_tsv_path('clres', distance_metric, embedding_name, query_n, bert_layers=bert_layers)
     if os.path.isfile(predictions_path):
         print(f"Reading predictions from {predictions_path}")
         return
@@ -120,7 +93,7 @@ def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
             top_n=top_n,
             same_lemma=True,
         ).eval().to(device)
-    dummy_reader = CpaReader(split='train', token_indexers={'tokens': indexer})
+    dummy_reader = ClresConlluReader(split='train', token_indexers={'tokens': indexer})
     predictor = NearestNeighborPredictor(model=model, dataset_reader=dummy_reader)
 
     # remove any super-rare instances that did not occur at least 5 times in train
@@ -192,13 +165,13 @@ def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
 def main(embedding_name, distance_metric, top_n=50, query_n=1, bert_layers=None):
     predict(embedding_name, distance_metric, top_n, query_n, bert_layers)
 
-    with open('cache/cpa_stats/train_label_freq.tsv', 'r') as f:
+    with open('cache/clres_stats/train_label_freq.tsv', 'r') as f:
         label_freqs = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
-    with open('cache/cpa_stats/train_lemma_freq.tsv', 'r') as f:
+    with open('cache/clres_stats/train_lemma_freq.tsv', 'r') as f:
         lemma_freqs = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
 
     df = pd.read_csv(
-        paths.predictions_tsv_path('cpa', distance_metric, embedding_name, query_n, bert_layers=bert_layers),
+        paths.predictions_tsv_path('clres', distance_metric, embedding_name, query_n, bert_layers=bert_layers),
         sep='\t',
         error_bad_lines=False
     )
@@ -208,7 +181,7 @@ def main(embedding_name, distance_metric, top_n=50, query_n=1, bert_layers=None)
             metrics_at_k(
                 df, label_freqs, lemma_freqs, top_n,
                 path_f=lambda ext: paths.bucketed_metric_at_k_path(
-                    'cpa',
+                    'clres',
                     distance_metric,
                     query_n,
                     embedding_name,
