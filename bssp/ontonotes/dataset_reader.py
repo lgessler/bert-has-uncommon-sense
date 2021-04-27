@@ -11,28 +11,27 @@ from bssp.common.embedder_model import EmbedderModelPredictor
 
 
 def lemma_from_label(label):
-    """ Turn something like "make_v_1.0" into "make_v" """
-    return label[:label.rfind('_')]
+    """Turn something like "make_v_1.0" into "make_v" """
+    return label[: label.rfind("_")]
 
 
-@DatasetReader.register('ontonotes')
+@DatasetReader.register("ontonotes")
 class OntonotesReader(DatasetReader):
-    def __init__(self,
-                 split: Literal['train', 'test', 'all', 'none'],
-                 token_indexers: Dict[str, TokenIndexer] = None,
-                 embedding_predictor: EmbedderModelPredictor = None,
-                 **kwargs):
+    def __init__(
+        self,
+        split: Literal["train", "test", "all", "none"],
+        token_indexers: Dict[str, TokenIndexer] = None,
+        embedding_predictor: EmbedderModelPredictor = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.split = split
         self.token_indexers = token_indexers
         self.embedding_predictor = embedding_predictor
 
-    def text_to_instance(self,
-                         tokens: List[str],
-                         span_start: int,
-                         span_end: int,
-                         label: str,
-                         embeddings: np.ndarray = None) -> Instance:
+    def text_to_instance(
+        self, tokens: List[str], span_start: int, span_end: int, label: str, embeddings: np.ndarray = None
+    ) -> Instance:
         tokens = [Token(t) for t in tokens]
         # The text of the sentence in which the word sense appears
         text_field = TextField(tokens, self.token_indexers)
@@ -41,15 +40,10 @@ class OntonotesReader(DatasetReader):
         # a label like "make_v_1.0"
         label_field = LabelField(label)
         # like above but without the sense number
-        lemma_field = LabelField(lemma_from_label(label), label_namespace='lemma_labels')
-        fields = {
-            'text': text_field,
-            'label_span': lemma_span_field,
-            'label': label_field,
-            'lemma': lemma_field
-        }
+        lemma_field = LabelField(lemma_from_label(label), label_namespace="lemma_labels")
+        fields = {"text": text_field, "label_span": lemma_span_field, "label": label_field, "lemma": lemma_field}
         if self.embedding_predictor:
-            fields['span_embeddings'] = ArrayField(embeddings[span_start:span_end + 1, :])
+            fields["span_embeddings"] = ArrayField(embeddings[span_start : span_end + 1, :])
 
         return Instance(fields)
 
@@ -63,7 +57,7 @@ class OntonotesReader(DatasetReader):
                     else:
                         tokens = sent.words
                         if self.embedding_predictor:
-                            embeddings = np.array(self.embedding_predictor.predict(tokens)['embeddings'])
+                            embeddings = np.array(self.embedding_predictor.predict(tokens)["embeddings"])
                         else:
                             embeddings = None
                         if not (len(sent.words) == len(sent.word_senses) == len(sent.predicate_lemmas)):
@@ -77,8 +71,10 @@ class OntonotesReader(DatasetReader):
                             if sense is not None:
                                 lemma = sent.predicate_lemmas[i]
                                 pos_tag = sent.pos_tags[i]
-                                simplified_pos = "n" if pos_tag.startswith("N") else "v" if pos_tag.startswith("V") else None
-                                #if simplified_pos is None:
+                                simplified_pos = (
+                                    "n" if pos_tag.startswith("N") else "v" if pos_tag.startswith("V") else None
+                                )
+                                # if simplified_pos is None:
                                 #    raise Exception(f"POS tag not for noun or verb: {pos_tag}")
                                 instance = self.text_to_instance(
                                     tokens, i, i, f"{lemma}_{simplified_pos}_{sense}", embeddings=embeddings
@@ -86,6 +82,3 @@ class OntonotesReader(DatasetReader):
                                 if random() < 0.0001:
                                     print(instance)
                                 yield instance
-
-
-

@@ -153,9 +153,9 @@ def main(tsv_filepath):
 if __name__ == '__main__':
     #with open('cache/ontonotes_stats/synset_freqs.tsv', 'r') as f:
     #    SYNSET_FREQS = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
-    with open('cache/ontonotes_stats/train_lemma_freq.tsv', 'r') as f:
+    with open('cache/clres_stats/train_lemma_freq.tsv', 'r') as f:
         LEMMA_FREQS = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
-    with open('cache/ontonotes_stats/train_label_freq.tsv', 'r') as f:
+    with open('cache/clres_stats/train_label_freq.tsv', 'r') as f:
         LABEL_FREQS = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
     ap = argparse.ArgumentParser()
     ap.add_argument(

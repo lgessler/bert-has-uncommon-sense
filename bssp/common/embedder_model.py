@@ -18,21 +18,20 @@ class EmbedderModel(Model):
 
     def forward(self, text: Dict[str, Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
         embedded_text = self.embedder(text)
-        return {
-            "token_ids": get_token_ids_from_text_field_tensors(text),
-            "embeddings": embedded_text
-        }
+        return {"token_ids": get_token_ids_from_text_field_tensors(text), "embeddings": embedded_text}
 
 
 class EmbedderModelPredictor(Predictor):
     def predict(self, sentence: List[str]) -> JsonDict:
-        return self.predict_json({
-            "sentence": sentence,
-        })
+        return self.predict_json(
+            {
+                "sentence": sentence,
+            }
+        )
 
     def _json_to_instance(self, json_dict: JsonDict) -> Instance:
         return self._dataset_reader.text_to_instance(
-            tokens=json_dict['sentence'],
+            tokens=json_dict["sentence"],
         )
 
 
@@ -45,7 +44,6 @@ class EmbedderDatasetReader(DatasetReader):
         tokens = [Token(t) for t in tokens]
         text_field = TextField(tokens, self.token_indexers)
         fields = {
-            'text': text_field,
+            "text": text_field,
         }
         return Instance(fields)
-

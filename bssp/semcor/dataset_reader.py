@@ -14,11 +14,11 @@ from bssp.common.embedder_model import EmbedderModelPredictor
 
 
 def synset_from_label(label):
-    return label[:label.rfind('_')]
+    return label[: label.rfind("_")]
 
 
 def lemma_from_label(label):
-    return label[label.rfind('_')+1:]
+    return label[label.rfind("_") + 1 :]
 
 
 def tokens_of_sentence(sentence) -> List[str]:
@@ -48,59 +48,54 @@ def lemma_to_string(lemma: Lemma) -> str:
     if type(lemma) is str:
         logger.warning("lemma was a string instead of a Lemma: " + lemma)
         return lemma
-    return lemma.synset().name() + '_' + lemma.name()
+    return lemma.synset().name() + "_" + lemma.name()
 
 
-@DatasetReader.register('semcor')
+@DatasetReader.register("semcor")
 class SemcorReader(DatasetReader):
-    def __init__(self,
-                 split: Literal['train', 'test', 'all', 'none'],
-                 token_indexers: Dict[str, TokenIndexer] = None,
-                 embedding_predictor: EmbedderModelPredictor = None,
-                 **kwargs):
+    def __init__(
+        self,
+        split: Literal["train", "test", "all", "none"],
+        token_indexers: Dict[str, TokenIndexer] = None,
+        embedding_predictor: EmbedderModelPredictor = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.split = split
         self.token_indexers = token_indexers
         self.embedding_predictor = embedding_predictor
 
-    def text_to_instance(self,
-                         tokens: List[str],
-                         span_start: int,
-                         span_end: int,
-                         lemma: str,
-                         embeddings: np.ndarray = None) -> Instance:
+    def text_to_instance(
+        self, tokens: List[str], span_start: int, span_end: int, lemma: str, embeddings: np.ndarray = None
+    ) -> Instance:
         Tokens = [Token(t) for t in tokens]
         text_field = TextField(Tokens, self.token_indexers)
         lemma_span_field = SpanField(span_start, span_end, text_field)
         lemma_label_field = LabelField(lemma)
-        fields = {
-            'text': text_field,
-            'lemma_span': lemma_span_field,
-            'lemma_label': lemma_label_field
-        }
+        fields = {"text": text_field, "lemma_span": lemma_span_field, "lemma_label": lemma_label_field}
         if self.embedding_predictor:
-            fields['span_embeddings'] = ArrayField(embeddings[span_start:span_end + 1, :])
+            fields["span_embeddings"] = ArrayField(embeddings[span_start : span_end + 1, :])
 
         return Instance(fields)
 
     def _read(self, file_path: str) -> Iterable[Instance]:
-        sentences = list(sc.tagged_sents(tag='sem'))
+        sentences = list(sc.tagged_sents(tag="sem"))
         # TODO: be wary that this is here
-        if 'small' in file_path:
+        if "small" in file_path:
             sentences = list(islice(sentences, 50))
 
         # deterministically shuffle sentences
         random.Random(42).shuffle(sentences)
 
-        if self.split == 'train':
-            sentences = sentences[:int(len(sentences)*.8)]
+        if self.split == "train":
+            sentences = sentences[: int(len(sentences) * 0.8)]
             logger.info("Reading train split of semcor: " + str(len(sentences)))
-        elif self.split == 'test':
-            sentences = sentences[int(len(sentences)*.8):]
+        elif self.split == "test":
+            sentences = sentences[int(len(sentences) * 0.8) :]
             logger.info("Reading test split of semcor: " + str(len(sentences)))
-        elif self.split == 'all':
+        elif self.split == "all":
             logger.info("Reading all splits of semcor: " + str(len(sentences)))
-        elif self.split == 'none':
+        elif self.split == "none":
             return []
         else:
             raise Exception("Unknown split: " + self.split)
@@ -110,7 +105,7 @@ class SemcorReader(DatasetReader):
             tokens = tokens_of_sentence(sentence)
             spans = spans_of_sentence(sentence)
             if self.embedding_predictor:
-                embeddings = np.array(self.embedding_predictor.predict(tokens)['embeddings'])
+                embeddings = np.array(self.embedding_predictor.predict(tokens)["embeddings"])
             else:
                 embeddings = None
             for span_tokens, (i, j), lemma in spans:
@@ -119,7 +114,7 @@ class SemcorReader(DatasetReader):
 
                 # don't consider multi-token words
                 if j != i:
-                    print('Skipping multiword instance ' + ' '.join(span_tokens))
+                    print("Skipping multiword instance " + " ".join(span_tokens))
                     continue
                 if j >= len(tokens) - 1:
                     print(f"out of j out of bounds!\n\ttext: {tokens}\n\t{(i,j)}\n\t{lemma_to_string(lemma)}")

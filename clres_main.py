@@ -9,7 +9,6 @@ This file will:
 import argparse
 import csv
 import os
-from glob import glob
 
 import torch
 import pandas as pd
@@ -18,7 +17,7 @@ from allennlp.data import Vocabulary
 
 from bssp.common import paths
 from bssp.common.analysis import metrics_at_k, dataset_stats
-from bssp.common.const import TRAIN_FREQ_BUCKETS, PREVALENCE_BUCKETS
+from bssp.common.config import Config
 from bssp.common.reading import read_dataset_cached, make_indexer, make_embedder
 from bssp.common.nearest_neighbor_models import NearestNeighborRetriever, NearestNeighborPredictor, RandomRetriever
 from bssp.common.util import batch_queries, format_sentence
@@ -28,38 +27,32 @@ TRAIN_FILEPATH = 'data/pdep/pdep_train.conllu'
 TEST_FILEPATH = 'data/pdep/pdep_test.conllu'
 
 
-def read_datasets(embedding_name, bert_layers):
-    train_dataset = read_dataset_cached(
-        ClresConlluReader, TRAIN_FILEPATH, 'clres', 'train', embedding_name, bert_layers=bert_layers, with_embeddings=True
-    )
+def read_datasets(cfg):
+    train_dataset = read_dataset_cached(cfg, ClresConlluReader, 'train', TRAIN_FILEPATH, with_embeddings=True)
     print(train_dataset[0])
-
-    test_dataset = read_dataset_cached(
-        ClresConlluReader, TEST_FILEPATH, 'clres', 'test', embedding_name, bert_layers=bert_layers, with_embeddings=False
-    )
+    test_dataset = read_dataset_cached(cfg, ClresConlluReader, 'test', TEST_FILEPATH, with_embeddings=False)
     return train_dataset, test_dataset
 
 
 def stats(train_dataset, test_dataset):
     train_labels, train_lemmas = dataset_stats('train', train_dataset, "clres_stats", lemma_from_label)
     test_labels, test_lemmas = dataset_stats('test', test_dataset, "clres_stats", lemma_from_label)
-
     return train_labels, train_lemmas
 
 
-def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
-    predictions_path = paths.predictions_tsv_path('clres', distance_metric, embedding_name, query_n, bert_layers=bert_layers)
+def predict(cfg):
+    predictions_path = paths.predictions_tsv_path(cfg)
     if os.path.isfile(predictions_path):
         print(f"Reading predictions from {predictions_path}")
         return
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    train_dataset, test_dataset = read_datasets(embedding_name, bert_layers)
+    train_dataset, test_dataset = read_datasets(cfg)
     train_label_counts, train_lemma_counts = stats(train_dataset, test_dataset)
 
-    indexer = make_indexer(embedding_name)
-    vocab, embedder = make_embedder(embedding_name, bert_layers)
+    indexer = make_indexer(cfg)
+    vocab, embedder = make_embedder(cfg)
 
     # we're using a `transformers` model
     label_vocab = Vocabulary.from_instances(train_dataset)
@@ -75,12 +68,12 @@ def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
     vocab.extend_from_vocab(label_vocab)
 
     print("Constructing model")
-    if distance_metric == 'baseline':
+    if cfg.metric == 'baseline':
         model = RandomRetriever(
             vocab=vocab,
             target_dataset=train_dataset,
             device=device,
-            top_n=top_n,
+            top_n=cfg.top_n,
             same_lemma=True,
         ).eval().to(device)
     else:
@@ -88,9 +81,9 @@ def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
             vocab=vocab,
             embedder=embedder,
             target_dataset=train_dataset,
-            distance_metric=distance_metric,
+            distance_metric=cfg.metric,
             device=device,
-            top_n=top_n,
+            top_n=cfg.top_n,
             same_lemma=True,
         ).eval().to(device)
     dummy_reader = ClresConlluReader(split='train', token_indexers={'tokens': indexer})
@@ -101,14 +94,14 @@ def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
     instances = [i for i in test_dataset if train_label_counts[i['label'].label] >= 5]
     # We are abusing the batch abstraction here--really a batch should be a set of independent instances,
     # but we are using it here as a convenient way to feed in a single instance.
-    batches = batch_queries(instances, query_n)
+    batches = batch_queries(instances, cfg.query_n)
     with open(predictions_path, 'wt') as f, torch.no_grad():
         tsv_writer = csv.writer(f, delimiter='\t')
         header = ['sentence', 'label', 'lemma', 'label_freq_in_train']
-        header += [f"label_{i+1}" for i in range(top_n)]
-        header += [f"lemma_{i+1}" for i in range(top_n)]
-        header += [f"sentence_{i+1}" for i in range(top_n)]
-        header += [f"distance_{i+1}" for i in range(top_n)]
+        header += [f"label_{i+1}" for i in range(cfg.top_n)]
+        header += [f"lemma_{i+1}" for i in range(cfg.top_n)]
+        header += [f"sentence_{i+1}" for i in range(cfg.top_n)]
+        header += [f"distance_{i+1}" for i in range(cfg.top_n)]
         tsv_writer.writerow(header)
 
         for batch in tqdm.tqdm(batches):
@@ -124,8 +117,8 @@ def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
             label_freq_in_train = train_label_counts[label]
 
             row = [" || ".join(sentences), label, lemma, label_freq_in_train]
-            results = d[f'top_{top_n}']
-            results += [None for _ in range(top_n - len(results))]
+            results = d[f'top_{cfg.top_n}']
+            results += [None for _ in range(cfg.top_n - len(results))]
 
             labels = []
             lemmas = []
@@ -162,8 +155,8 @@ def predict(embedding_name, distance_metric, top_n, query_n, bert_layers):
     print(f"Wrote predictions to {predictions_path}")
 
 
-def main(embedding_name, distance_metric, top_n=50, query_n=1, bert_layers=None):
-    predict(embedding_name, distance_metric, top_n, query_n, bert_layers)
+def main(cfg):
+    predict(cfg)
 
     with open('cache/clres_stats/train_label_freq.tsv', 'r') as f:
         label_freqs = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
@@ -171,27 +164,15 @@ def main(embedding_name, distance_metric, top_n=50, query_n=1, bert_layers=None)
         lemma_freqs = {k: int(v) for k, v in map(lambda l: l.strip().split('\t'), f)}
 
     df = pd.read_csv(
-        paths.predictions_tsv_path('clres', distance_metric, embedding_name, query_n, bert_layers=bert_layers),
+        paths.predictions_tsv_path(cfg),
         sep='\t',
         error_bad_lines=False
     )
-    for min_train_freq, max_train_freq in TRAIN_FREQ_BUCKETS:
-        for min_rarity, max_rarity in PREVALENCE_BUCKETS:
+    for min_train_freq, max_train_freq in cfg.train_freq_buckets:
+        for min_rarity, max_rarity in cfg.prevalence_buckets:
             print(f"Cutoff: [{min_train_freq},{max_train_freq}), Rarity: [{min_rarity},{max_rarity})")
             metrics_at_k(
-                df, label_freqs, lemma_freqs, top_n,
-                path_f=lambda ext: paths.bucketed_metric_at_k_path(
-                    'clres',
-                    distance_metric,
-                    query_n,
-                    embedding_name,
-                    min_train_freq,
-                    max_train_freq,
-                    min_rarity,
-                    max_rarity,
-                    ext,
-                    bert_layers=bert_layers
-                ),
+                cfg, df, label_freqs, lemma_freqs,
                 min_train_freq=min_train_freq,
                 max_train_freq=max_train_freq,
                 min_rarity=min_rarity,
@@ -204,12 +185,11 @@ if __name__ == '__main__':
     ap.add_argument(
         "--embedding",
         help="The pretrained embeddings to use.",
-        choices=[
-            'bert-large-cased',
-            'bert-base-cased',
-            'bert-base-uncased',
-        ],
         default='bert-base-cased'
+    )
+    ap.add_argument(
+        "--override-weights",
+        help="Override weights from fine-tuning to use with the model",
     )
     ap.add_argument(
         "--metric",
@@ -246,10 +226,14 @@ if __name__ == '__main__':
         if 'bert' in args.embedding and args.metric != 'baseline':
             raise Exception('Specify --bert-layers (e.g., `--bert-layers 1,2,3`)')
 
-    main(
-        args.embedding,
-        args.metric,
+    config = Config(
+        'clres',
+        embedding_model=args.embedding,
+        override_weights_path=args.override_weights,
+        metric=args.metric,
         top_n=args.top_n,
         query_n=args.query_n,
         bert_layers=bert_layers
     )
+
+    main(config)
