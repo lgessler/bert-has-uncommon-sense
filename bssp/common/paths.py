@@ -54,8 +54,12 @@ def bucketed_metric_at_k_path(
     pos=None,
 ):
     mdir = model_dir(cfg)
+    override_weights_piece = (
+        "_" + cfg.override_weights_path.replace(os.sep, "__") if cfg.override_weights_path is not None else ""
+    )
     return mdir + (
         f"{cfg.embedding_model}"
+        f"{override_weights_piece}"
         f'{("_" + ",".join(map(str, cfg.bert_layers))) if cfg.bert_layers else ""}'
         + (f"_{pos}" if pos else "")
         + (f"_{query_category}" if query_category else "")

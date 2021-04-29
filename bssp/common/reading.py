@@ -48,31 +48,30 @@ def make_embedder(cfg):
     (A BasicTextFieldEmbbeder can be called on a tensor with token indexes to produce embeddings.)"""
     vocab = Vocabulary()
     if cfg.bert_layers is not None:
+        tokenizer = BertTokenizer.from_pretrained(cfg.embedding_model)
+        for word in tokenizer.vocab.keys():
+            vocab.add_token_to_namespace(word, "tokens")
+        token_embedder = PretrainedTransformerMismatchedEmbedder(
+            model_name=cfg.embedding_model, last_layer_only=False
+        )
         if cfg.override_weights_path is not None:
-            print(f"Using weight overrides at {cfg.override_weights_path} for {cfg.embedding_model}")
-            token_embedder = PretrainedTransformerMismatchedEmbedder(
-                model_name=cfg.embedding_model, last_layer_only=False
-            )
+            # PTME doesn't let us pass the override_weights_file param, so just modify its _matched_embedder
+            get_test_param = lambda m: m.encoder.layer[0].attention.self.value.weight[0,0].item()
+            test_param = get_test_param(token_embedder._matched_embedder.transformer_model)
             token_embedder._matched_embedder = PretrainedTransformerEmbedder(
                 cfg.embedding_model, last_layer_only=False, override_weights_file=cfg.override_weights_path
             )
-            token_embedders = {"tokens": token_embedder}
-        else:
-            tokenizer = BertTokenizer.from_pretrained(cfg.embedding_model)
-            for word in tokenizer.vocab.keys():
-                vocab.add_token_to_namespace(word, "tokens")
-            token_embedders = {
-                "tokens": PretrainedTransformerMismatchedEmbedder(model_name=cfg.embedding_model, last_layer_only=False)
-            }
+            # ensure we didn't load the same model, ie that the override actually worked
+            assert test_param != get_test_param(token_embedder._matched_embedder.transformer_model)
+            print(f"Using weight overrides at {cfg.override_weights_path} for {cfg.embedding_model}")
     else:
         with open(cfg.embedding_model, "r", encoding="utf-8") as f:
             count = 0
             for i, line in enumerate(f.readlines()):
                 vocab.add_token_to_namespace(line[0 : line.find(" ")], namespace="tokens")
                 count += 1
-        token_embedders = {
-            "tokens": Embedding(embedding_dim=300, vocab=vocab, pretrained_file=cfg.embedding_model, trainable=False)
-        }
+        token_embedder = Embedding(embedding_dim=300, vocab=vocab, pretrained_file=cfg.embedding_model, trainable=False)
+    token_embedders = {"tokens": token_embedder}
 
     # print(token_embedders)
     # assert False

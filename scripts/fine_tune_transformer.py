@@ -1,5 +1,6 @@
 import os
 
+import allennlp
 import click
 import json
 
@@ -10,7 +11,7 @@ from allennlp.data.token_indexers import PretrainedTransformerMismatchedIndexer
 from allennlp.modules.token_embedders import PretrainedTransformerMismatchedEmbedder
 from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
 from allennlp.training import GradientDescentTrainer
-from allennlp.training.optimizers import AdamOptimizer
+from allennlp.training.optimizers import AdamOptimizer, HuggingfaceAdamWOptimizer
 from transformers import AdamW, BertForTokenClassification, BertTokenizer, AutoTokenizer, AutoModel
 
 from bssp.fine_tuning.models import StreusleFineTuningModel
@@ -41,12 +42,13 @@ def build_model(vocab, transformer_model_name):
 
 def build_trainer(model, loader):
     parameters = [(n, p) for n, p in model.named_parameters() if p.requires_grad]
-    optimizer = AdamOptimizer(parameters)
+    optimizer = HuggingfaceAdamWOptimizer(parameters, lr=1e-5)
     trainer = GradientDescentTrainer(
         model=model,
         data_loader=loader,
         validation_data_loader=loader,
-        num_epochs=5,
+        num_epochs=10,
+        patience=5,
         optimizer=optimizer,
     )
     return trainer
@@ -56,18 +58,24 @@ def build_trainer(model, loader):
 @click.argument("transformer_model_name")
 @click.argument("serialization_path")
 @click.option("--corpus", default="streusle", help="Corpus to fine tune on")
-@click.option("--num_n", default=100, help="Number of noun instances to fine tune on")
-@click.option("--num_v", default=100, help="Number of verb instances to fine tune on")
-@click.option("--num_p", default=100, help="Number of preposition instances to fine tune on")
-def main(transformer_model_name, serialization_path, corpus, num_n, num_v, num_p):
+@click.option("--num_insts", default=100, help="Number of instances to fine tune on")
+def main(transformer_model_name, serialization_path, corpus, num_insts):
+    # same number for each pos
+    num_n = num_v = num_p = num_insts // 3
 
     if corpus == "streusle":
-        json_path = "data/streusle/dev/streusle.ud_dev.json"
+        # Read the data
+        json_path = "data/streusle/train/streusle.ud_train.json"
         reader = make_streusle_reader(transformer_model_name, num_n, num_v, num_p)
         instances = list(reader.read(json_path))
+
+        # Check that we were able to meet the quota
+        required_number = (num_insts // 3) * 3
+        if len(instances) < required_number:
+            raise Exception(f"Requested {required_number} instances, but only got {len(instances)}")
+
         vocab = Vocabulary.from_instances(instances)
         loader = make_streusle_data_loader(instances, vocab)
-        print(len(instances))
     else:
         raise Exception(f"Unknown corpus: {corpus}")
 
@@ -77,6 +85,11 @@ def main(transformer_model_name, serialization_path, corpus, num_n, num_v, num_p
     trainer.train()
     transformer_model = model.embedder._token_embedders["tokens"]._matched_embedder.transformer_model
     torch.save(transformer_model.state_dict(), serialization_path)
+    print(f"Saved fine-tuned weights for {transformer_model_name} on {num_insts} instances "
+          f"to {serialization_path}")
+
+    # from allennlp.common.cached_transformers import get
+    # torch.save(get(transformer_model_name, True).state_dict(), serialization_path + "_orig")
     # transformer_model.save_pretrained(serialization_path)
     # AutoModel.from_pretrained(serialization_path)
     # tokenizer = AutoTokenizer.from_pretrained(transformer_model_name)
