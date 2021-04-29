@@ -44,7 +44,7 @@ def spans_of_sentence(sentence):
             tokens += span_tokens
 
 
-def lemma_to_string(lemma: Lemma) -> str:
+def lemma_object_to_string(lemma: Lemma) -> str:
     if type(lemma) is str:
         logger.warning("lemma was a string instead of a Lemma: " + lemma)
         return lemma
@@ -66,13 +66,14 @@ class SemcorReader(DatasetReader):
         self.embedding_predictor = embedding_predictor
 
     def text_to_instance(
-        self, tokens: List[str], span_start: int, span_end: int, lemma: str, embeddings: np.ndarray = None
+        self, tokens: List[str], span_start: int, span_end: int, label: str, embeddings: np.ndarray = None
     ) -> Instance:
         Tokens = [Token(t) for t in tokens]
         text_field = TextField(Tokens, self.token_indexers)
         lemma_span_field = SpanField(span_start, span_end, text_field)
-        lemma_label_field = LabelField(lemma)
-        fields = {"text": text_field, "lemma_span": lemma_span_field, "lemma_label": lemma_label_field}
+        label_field = LabelField(label)
+        lemma_field = LabelField(lemma_from_label(label))
+        fields = {"text": text_field, "label_span": lemma_span_field, "label": label_field, "lemma": lemma_field}
         if self.embedding_predictor:
             fields["span_embeddings"] = ArrayField(embeddings[span_start : span_end + 1, :])
 
@@ -80,9 +81,6 @@ class SemcorReader(DatasetReader):
 
     def _read(self, file_path: str) -> Iterable[Instance]:
         sentences = list(sc.tagged_sents(tag="sem"))
-        # TODO: be wary that this is here
-        if "small" in file_path:
-            sentences = list(islice(sentences, 50))
 
         # deterministically shuffle sentences
         random.Random(42).shuffle(sentences)
@@ -117,6 +115,6 @@ class SemcorReader(DatasetReader):
                     print("Skipping multiword instance " + " ".join(span_tokens))
                     continue
                 if j >= len(tokens) - 1:
-                    print(f"out of j out of bounds!\n\ttext: {tokens}\n\t{(i,j)}\n\t{lemma_to_string(lemma)}")
+                    print(f"out of j out of bounds!\n\ttext: {tokens}\n\t{(i,j)}\n\t{lemma_object_to_string(lemma)}")
                     continue
-                yield self.text_to_instance(tokens, i, j, lemma_to_string(lemma), embeddings=embeddings)
+                yield self.text_to_instance(tokens, i, j, lemma_object_to_string(lemma), embeddings=embeddings)

@@ -11,6 +11,7 @@ def metrics_at_k(
     df,
     label_freqs,
     lemma_freqs,
+    lemma_f,
     min_train_freq,
     max_train_freq,
     min_rarity,
@@ -33,18 +34,27 @@ def metrics_at_k(
     # this is very inefficient. Instead, we reverse the loop order.
     for _, row in tqdm(df.iterrows()):
         label = row.label
-        lemma = row.label[: row.label.rfind("_")]
+        lemma = lemma_f(label)
+
+        # By default for ontonotes, only consider non-nota senses
+        if cfg.corpus_name == 'ontonotes' and label in NOTA_SENSES:
+            continue
+        # skipped named entities for semcor
+        if cfg.corpus_name == 'semcor' and (label == 'NE' or '_' not in label):
+            continue
+
         rarity = label_freqs[label] / lemma_freqs[lemma]
 
-        if query_category and (
-            query_category == "non-nota"
-            and label in NOTA_SENSES
-            or query_category == "nota"
-            and label not in NOTA_SENSES
-        ):
-            continue
-        if pos and (pos == "n" and "_n_" not in label) or (pos == "v" and "_v_" not in label):
-            continue
+        # Handling for query_category and pos--disabled for now
+        # if query_category and (
+        #     query_category == "non-nota"
+        #     and label in NOTA_SENSES
+        #     or query_category == "nota"
+        #     and label not in NOTA_SENSES
+        # ):
+        #     continue
+        # if pos and (pos == "n" and "_n_" not in label) or (pos == "v" and "_v_" not in label):
+        #     continue
 
         # take care that we're in the proper bucket
         if not (min_rarity <= rarity < max_rarity):
