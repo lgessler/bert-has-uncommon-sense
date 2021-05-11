@@ -37,10 +37,10 @@ def metrics_at_k(
         lemma = lemma_f(label)
 
         # By default for ontonotes, only consider non-nota senses
-        if cfg.corpus_name == 'ontonotes' and label in NOTA_SENSES:
+        if cfg.corpus_name == "ontonotes" and label in NOTA_SENSES:
             continue
         # skipped named entities for semcor
-        if cfg.corpus_name == 'semcor' and (label == 'NE' or '_' not in label):
+        if cfg.corpus_name == "semcor" and (label == "NE" or "_" not in label):
             continue
 
         rarity = label_freqs[label] / lemma_freqs[lemma]

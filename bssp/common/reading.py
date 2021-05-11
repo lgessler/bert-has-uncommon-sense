@@ -13,7 +13,7 @@ from allennlp.modules.token_embedders import (
     PretrainedTransformerEmbedder,
 )
 from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
-from transformers import BertTokenizer
+from transformers import AutoTokenizer
 
 from bssp.common import paths
 from bssp.common.embedder_model import EmbedderModel, EmbedderDatasetReader, EmbedderModelPredictor
@@ -21,7 +21,7 @@ from bssp.common.embedder_model import EmbedderModel, EmbedderDatasetReader, Emb
 
 def make_indexer(cfg):
     """Get a token indexer that's appropriate for the embedding type"""
-    if cfg.embedding_model.startswith("bert-"):
+    if cfg.is_transformer():
         return PretrainedTransformerMismatchedIndexer(cfg.embedding_model, namespace="tokens")
     else:
         return SingleIdTokenIndexer(namespace="tokens")
@@ -48,15 +48,13 @@ def make_embedder(cfg):
     (A BasicTextFieldEmbbeder can be called on a tensor with token indexes to produce embeddings.)"""
     vocab = Vocabulary()
     if cfg.bert_layers is not None:
-        tokenizer = BertTokenizer.from_pretrained(cfg.embedding_model)
+        tokenizer = AutoTokenizer.from_pretrained(cfg.embedding_model)
         for word in tokenizer.vocab.keys():
             vocab.add_token_to_namespace(word, "tokens")
-        token_embedder = PretrainedTransformerMismatchedEmbedder(
-            model_name=cfg.embedding_model, last_layer_only=False
-        )
+        token_embedder = PretrainedTransformerMismatchedEmbedder(model_name=cfg.embedding_model, last_layer_only=False)
         if cfg.override_weights_path is not None:
             # PTME doesn't let us pass the override_weights_file param, so just modify its _matched_embedder
-            get_test_param = lambda m: m.encoder.layer[0].attention.self.value.weight[0,0].item()
+            get_test_param = lambda m: m.encoder.layer[0].attention.self.value.weight[0, 0].item()
             test_param = get_test_param(token_embedder._matched_embedder.transformer_model)
             token_embedder._matched_embedder = PretrainedTransformerEmbedder(
                 cfg.embedding_model, last_layer_only=False, override_weights_file=cfg.override_weights_path

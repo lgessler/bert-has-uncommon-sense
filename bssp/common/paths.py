@@ -44,14 +44,7 @@ def predictions_tsv_path(cfg):
 
 
 def bucketed_metric_at_k_path(
-    cfg,
-    min_train_freq,
-    max_train_freq,
-    min_rarity,
-    max_rarity,
-    ext,
-    query_category=None,
-    pos=None,
+    cfg, min_train_freq, max_train_freq, min_rarity, max_rarity, ext, query_category=None, pos=None,
 ):
     mdir = model_dir(cfg)
     override_weights_piece = (

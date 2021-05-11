@@ -20,3 +20,8 @@ class Config:
         self.bert_layers = bert_layers
         self.train_freq_buckets = train_freq_buckets
         self.prevalence_buckets = prevalence_buckets
+
+    def is_transformer(self):
+        return self.embedding_model in [] or any(
+            self.embedding_model.startswith(m) for m in ["roberta-", "bert-", "distilbert-"]
+        )
