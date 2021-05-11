@@ -32,6 +32,7 @@ from bssp.common.reading import read_dataset_cached, make_indexer, make_embedder
 from bssp.common.nearest_neighbor_models import NearestNeighborRetriever, NearestNeighborPredictor, RandomRetriever
 from bssp.common.util import batch_queries, format_sentence
 from bssp.clres.dataset_reader import lemma_from_label, ClresConlluReader
+from bssp.fews.dataset_reader import FewsReader
 from bssp.fine_tuning.models import StreusleFineTuningModel
 from bssp.fine_tuning.streusle import StreusleJsonReader
 from bssp.ontonotes.dataset_reader import OntonotesReader
@@ -109,6 +110,15 @@ def read_datasets(cfg):
     elif cfg.corpus_name == "semcor":
         train_dataset = read_dataset_cached(cfg, SemcorReader, "train", None, with_embeddings=True)
         test_dataset = read_dataset_cached(cfg, SemcorReader, "test", None, with_embeddings=False)
+    elif cfg.corpus_name == "fews":
+        train_dataset = read_dataset_cached(cfg, FewsReader, "train", "data/fews/train/train.txt", with_embeddings=True)
+        dev_dataset = read_dataset_cached(
+            cfg, FewsReader, "dev", "data/fews/dev/dev.few-shot.txt", with_embeddings=False
+        )
+        test_dataset = read_dataset_cached(
+            cfg, FewsReader, "test", "data/fews/test/test.few-shot.txt", with_embeddings=False
+        )
+        test_dataset = dev_dataset + test_dataset
     else:
         raise Exception(f"Unknown corpus: {cfg.corpus_name}")
 
@@ -132,6 +142,8 @@ def get_lemma_f(cfg):
         lemma_f = bssp.ontonotes.dataset_reader.lemma_from_label
     elif cfg.corpus_name == "semcor":
         lemma_f = bssp.semcor.dataset_reader.lemma_from_label
+    elif cfg.corpus_name == "fews":
+        lemma_f = bssp.fews.dataset_reader.lemma_from_label
     else:
         raise Exception(f"Unknown corpus: {cfg.corpus_name}")
     return lemma_f
@@ -174,7 +186,13 @@ def predict(cfg):
     print("Constructing model")
     if cfg.metric == "baseline":
         model = (
-            RandomRetriever(vocab=vocab, target_dataset=train_dataset, device=device, top_n=cfg.top_n, same_lemma=True,)
+            RandomRetriever(
+                vocab=vocab,
+                target_dataset=train_dataset,
+                device=device,
+                top_n=cfg.top_n,
+                same_lemma=True,
+            )
             .eval()
             .to(device)
         )
@@ -434,7 +452,12 @@ def build_trainer(model, loader):
     parameters = [(n, p) for n, p in model.named_parameters() if p.requires_grad]
     optimizer = HuggingfaceAdamWOptimizer(parameters, lr=2e-5)
     trainer = GradientDescentTrainer(
-        model=model, data_loader=loader, validation_data_loader=loader, num_epochs=40, patience=5, optimizer=optimizer,
+        model=model,
+        data_loader=loader,
+        validation_data_loader=loader,
+        num_epochs=40,
+        patience=5,
+        optimizer=optimizer,
     )
     return trainer
 
