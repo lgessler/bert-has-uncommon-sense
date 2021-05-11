@@ -23,10 +23,16 @@ class EmbedderModel(Model):
 
 class EmbedderModelPredictor(Predictor):
     def predict(self, sentence: List[str]) -> JsonDict:
-        return self.predict_json({"sentence": sentence,})
+        return self.predict_json(
+            {
+                "sentence": sentence,
+            }
+        )
 
     def _json_to_instance(self, json_dict: JsonDict) -> Instance:
-        return self._dataset_reader.text_to_instance(tokens=json_dict["sentence"],)
+        return self._dataset_reader.text_to_instance(
+            tokens=json_dict["sentence"],
+        )
 
 
 class EmbedderDatasetReader(DatasetReader):
