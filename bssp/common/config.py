@@ -22,6 +22,6 @@ class Config:
         self.prevalence_buckets = prevalence_buckets
 
     def is_transformer(self):
-        return self.embedding_model in [] or any(
-            self.embedding_model.startswith(m) for m in ["roberta-", "bert-", "distilbert-"]
+        return self.embedding_model in ['gpt2'] or any(
+            self.embedding_model.startswith(m) for m in ["roberta-", "bert-", "distilbert-", "distilroberta-", "xlnet-", "albert-"]
         )
