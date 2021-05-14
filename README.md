@@ -2,7 +2,8 @@
 ## Data
 In order to reproduce the OntoNotes data, you will need to have a copy of OntoNotes 5.0 in CONLL format located at 
 `data/conll-formatted-ontonotes-5.0`. 
-Cf. https://docs.allennlp.org/models/main/models/common/ontonotes/ and https://cemantix.org/data/ontonotes.html
+Cf. https://docs.allennlp.org/models/main/models/common/ontonotes/ and https://cemantix.org/data/ontonotes.html. 
+(If you're a GU affiliate, email Luke at lg876@georgetown.edu.)
 
 ## Setup
 1. Initiate submodules:
