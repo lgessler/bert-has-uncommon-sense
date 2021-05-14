@@ -1,6 +1,6 @@
 #!/bin/sh
 eval "$(conda shell.bash hook)"
-conda activate sembre
+conda activate bhus
 
 for CORPUS in "ontonotes" "clres"; do
   python main.py trial --embedding-model "bert-base-cased" --metric "baseline" --query-n 1 --bert-layer 7 "$CORPUS"
