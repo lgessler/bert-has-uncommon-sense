@@ -1,25 +1,59 @@
-# AllenNLP Template Project using Config Files
+# Usage
+## Data
+In order to reproduce the OntoNotes data, you will need to have a copy of OntoNotes 5.0 in 
+[CONLL format](https://cemantix.org/data/ontonotes.html). Cf. https://docs.allennlp.org/models/main/models/common/ontonotes/
 
-A template for starting a new allennlp project using config files and `allennlp train`.  For simple
-projects, all you need to do is get your model code into the class in `my_project/model.py`, your
-data loading code into the `DatasetReader` code in `my_project/dataset_reader.py`, and that's it,
-you can train a model (we recommend also making appropriate changes to the test code, and using that
-for development, but that's optional).
+## Setup
+1. Initiate submodules:
 
-See the [AllenNLP Guide](https://guide.allennlp.org/your-first-model) for a quick start on how to
-use what's in this example project.  We're grabbing the model and dataset reader classes from that
-guide.  You can replace those classes with a model and dataset reader for whatever you want
-(including copying code from our [model library](https://github.com/allenai/allennlp-models) as a
-starting point). The very brief version of what's in here:
+```bash
+git submodule init
+git submodule update
+```
 
-* A `Model` class in `my_project/model.py`.
-* A `DatasetReader` class in `my_project/dataset_reader.py`.
-* Tests for both of these classes in `tests`, including a small toy dataset that can be read.  We
-  strongly recommend that you use a toy dataset with tests like this during model development, for
-  quick debug cycles. To run the tests, just run `pytest` from the base directory of this project.
-* An `.allennlp_plugins` file, which makes it easier to use `allennlp train` with this project.  If
-  you change the name of `my_project`, you should also change the line in this file to match.
-* An example configuration file for training the model, which you would use with the following shell
-  command from the base directory of this repository, after `pip install allennlp`:
+2. Create a new Anaconda environment:
 
-    allennlp train -s /dir/to/save/results training_config/my_model_trained_on_my_dataset.json
+```bash
+$ conda create --name bhus python=3.8
+```
+
+3. Install dependencies:
+
+```
+conda activate bhus
+pip install -r requirements.txt
+```
+
+4. Perform a test run to ensure everything's working:
+
+```
+mkdir models
+# finetune the model on a small number of STREUSLE instances
+python main.py finetune --num_insts 100 distilbert-base-cased models/distilbert-base-cased_100.pt
+# run the trials using the finetuned model we just created on pdep--note `clres` is an alias we use for pdep
+python main.py trial \
+    --embedding-model distilbert-base-cased \
+    --metric cosine \
+    --query-n 1 \
+    --bert-layer 5 \
+    --override-weights models/distilbert-base-cased_100.pt \
+    clres
+# analyze results by bucket
+python main.py summarize \
+    --embedding-model distilbert-base-cased \
+    --metric cosine \
+    --query-n 1 \
+    --bert-layer 5 \
+    --override-weights models/distilbert-base-cased_100.pt \
+    clres
+```
+
+## Execution
+
+Type `bash scripts/all_experiments.sh` to yield the numbers used in the paper's tables, which will appear in TSV 
+files by bucket. For individual results on each trial, see `.tsv` files under `cache/`.
+In between runs, clear `cache/`, `models/`, and `*.tsv`.
+
+# Acknowledgments
+Thanks to Ken Litkowski for allowing us to distribute a subset of the 
+[PDEP corpus](https://www.aclweb.org/anthology/P14-1120.pdf) with our code. 
