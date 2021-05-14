@@ -54,13 +54,13 @@ def make_embedder(cfg):
         token_embedder = PretrainedTransformerMismatchedEmbedder(model_name=cfg.embedding_model, last_layer_only=False)
         if cfg.override_weights_path is not None:
             # PTME doesn't let us pass the override_weights_file param, so just modify its _matched_embedder
-            get_test_param = lambda m: m.encoder.layer[0].attention.self.value.weight[0, 0].item()
-            test_param = get_test_param(token_embedder._matched_embedder.transformer_model)
+            # get_test_param = lambda m: m.encoder.layer[0].attention.self.value.weight[0, 0].item()
+            # test_param = get_test_param(token_embedder._matched_embedder.transformer_model)
             token_embedder._matched_embedder = PretrainedTransformerEmbedder(
                 cfg.embedding_model, last_layer_only=False, override_weights_file=cfg.override_weights_path
             )
             # ensure we didn't load the same model, ie that the override actually worked
-            assert test_param != get_test_param(token_embedder._matched_embedder.transformer_model)
+            # assert test_param != get_test_param(token_embedder._matched_embedder.transformer_model)
             print(f"Using weight overrides at {cfg.override_weights_path} for {cfg.embedding_model}")
     else:
         with open(cfg.embedding_model, "r", encoding="utf-8") as f:

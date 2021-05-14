@@ -11,13 +11,14 @@ from bssp.common.embedder_model import EmbedderModelPredictor
 
 
 def lemma_from_label(label):
-    return label.split(".")[0]
+    return ".".join(label.split(".")[:2])
 
 
 @DatasetReader.register("fews")
 class FewsReader(DatasetReader):
     def __init__(
         self,
+        split: str,
         token_indexers: Dict[str, TokenIndexer] = None,
         embedding_predictor: EmbedderModelPredictor = None,
         **kwargs,
@@ -43,9 +44,16 @@ class FewsReader(DatasetReader):
 
     def _read(self, file_path: str) -> Iterable[Instance]:
         with open(file_path, "r") as f:
-            for line in tqdm(f):
+            multiword_skipped = 0
+            too_long_skipped = 0
+            pbar = tqdm(f)
+            for line in pbar:
                 sent, label = line.strip().split("\t")
-                match = re.search(r"<WSD>(.*)</WSD>", sent)
+                match = re.search(r"<WSD>([^ ]*)</WSD>", sent)
+                if match is None:
+                    multiword_skipped += 1
+                    pbar.set_postfix({"multiword_skipped": multiword_skipped, "too_long_skipped": too_long_skipped})
+                    continue
                 lefti, righti = match.span()
                 sent_left = sent[:lefti]
                 sent_right = sent[righti:]
@@ -54,7 +62,11 @@ class FewsReader(DatasetReader):
                 index = len(tokens)
                 tokens += [match.groups()[0]]
                 tokens += [str(t) for t in self.tokenizer.tokenize(sent_right)]
-
+                if len(tokens) > 300:
+                    too_long_skipped += 1
+                    pbar.set_postfix({"multiword_skipped": multiword_skipped, "too_long_skipped": too_long_skipped})
+                    continue
+                pbar.set_postfix({"multiword_skipped": multiword_skipped, "too_long_skipped": too_long_skipped})
                 if self.embedding_predictor:
                     embeddings = np.array(self.embedding_predictor.predict(tokens)["embeddings"])
                 else:
