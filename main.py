@@ -458,6 +458,7 @@ def build_trainer(model, loader):
         num_epochs=40,
         patience=5,
         optimizer=optimizer,
+        run_sanity_checks=False
     )
     return trainer
 
