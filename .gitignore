@@ -6,5 +6,6 @@ scratch.py
 .ipynb_checkpoints
 
 model/
+models/
 data/
 cache/
