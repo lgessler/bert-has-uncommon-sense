@@ -1,5 +1,5 @@
 from collections import defaultdict, Counter
-from ldg.pickle import pickle_write
+from bssp.common.pickle import pickle_write
 from tqdm import tqdm
 
 from bssp.common import paths
