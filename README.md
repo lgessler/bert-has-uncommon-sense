@@ -1,3 +1,8 @@
+# Introduction
+This is the code accompanying our paper [_Bert Has Uncommon Sense_](https://arxiv.org/abs/2109.09780).
+
+TODO: add BibTeX
+
 # Usage
 ## Data
 In order to reproduce the OntoNotes data, you will need to have a copy of OntoNotes 5.0 in CONLL format located at 
