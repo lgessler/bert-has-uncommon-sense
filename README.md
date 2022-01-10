@@ -1,7 +1,23 @@
 # Introduction
-This is the code accompanying our paper [_Bert Has Uncommon Sense_](https://arxiv.org/abs/2109.09780).
+This is the code accompanying our paper [_Bert Has Uncommon Sense_](https://aclanthology.org/2021.blackboxnlp-1.43/).
 
-TODO: add BibTeX
+To cite:
+
+```
+@inproceedings{gessler-schneider-2021-bert,
+    title = "{BERT} Has Uncommon Sense: Similarity Ranking for Word Sense {BERT}ology",
+    author = "Gessler, Luke  and
+      Schneider, Nathan",
+    booktitle = "Proceedings of the Fourth BlackboxNLP Workshop on Analyzing and Interpreting Neural Networks for NLP",
+    month = nov,
+    year = "2021",
+    address = "Punta Cana, Dominican Republic",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2021.blackboxnlp-1.43",
+    doi = "10.18653/v1/2021.blackboxnlp-1.43",
+    pages = "539--547"
+}
+```
 
 # Usage
 ## Data
